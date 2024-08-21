@@ -1,0 +1,27 @@
+using System.Numerics;
+using System.Runtime.InteropServices;
+using Tmpx.Common;
+
+namespace Ralsei.Rendering.Vulkan;
+
+// std430 layout, matches ShapeEntry in Uber.vert and Uber.frag
+[StructLayout(LayoutKind.Sequential, Size = 56)] // std430 aligns to largest member
+public struct GpuShapeEntry
+{
+    // -- 0 - 32 (32 bytes) --
+    public int HorizontalBandEntryBaseIndex;
+    public int HorizontalBandEntryCount;
+    public float HorizontalBandScale;
+    public float HorizontalBandOffset;
+
+    public int VerticalBandEntryBaseIndex;
+    public int VerticalBandEntryCount;
+    public float VerticalBandScale;
+    public float VerticalBandOffset;
+    // -----------------------
+
+    public Vector2 Min; // 32 - 40 (8-byte aligned)
+    public Vector2 Max; // 40 - 48
+
+    public Color Color; // 48 - 52
+}

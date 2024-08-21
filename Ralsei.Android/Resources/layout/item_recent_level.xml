@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="64dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
+    android:paddingLeft="4dp"
+    android:paddingRight="4dp"
+    android:background="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
+
+  <com.google.android.material.imageview.ShapeableImageView
+      android:id="@+id/recent_cover"
+      android:layout_width="48dp"
+      android:layout_height="48dp"
+      android:scaleType="centerCrop"
+      android:padding="12dp"
+      android:src="@drawable/ic_music_note"
+      android:background="?attr/colorSecondaryContainer"
+      android:contentDescription="@null"
+      app:shapeAppearance="@style/ShapeAppearance.Material3.Corner.Small" />
+
+  <LinearLayout
+      android:orientation="vertical"
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_weight="1"
+      android:layout_marginLeft="16dp">
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/recent_title"
+        style="@style/TextAppearance.Material3.BodyLarge"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/recent_subtitle"
+        style="@style/TextAppearance.Material3.BodySmall"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+  </LinearLayout>
+
+  <ImageButton
+      android:id="@+id/recent_more"
+      android:src="@drawable/ic_more_vert"
+      android:background="?attr/selectableItemBackgroundBorderless"
+      android:contentDescription="@string/remove_from_recent"
+      android:layout_width="48dp"
+      android:layout_height="48dp" />
+</LinearLayout>

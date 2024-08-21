@@ -1,0 +1,20 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- ShadUI does not style the progress bar -->
+    <Style Selector="ProgressBar">
+        <Setter Property="Height" Value="8" />
+        <Setter Property="MinHeight" Value="8" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{DynamicResource SwitchBackgroundColor}"
+                        CornerRadius="{DynamicResource FullCornerRadius}"
+                        ClipToBounds="True">
+                    <Border x:Name="PART_Indicator"
+                            Background="{DynamicResource PrimaryColor}"
+                            CornerRadius="{DynamicResource FullCornerRadius}"
+                            HorizontalAlignment="Left" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+</Styles>

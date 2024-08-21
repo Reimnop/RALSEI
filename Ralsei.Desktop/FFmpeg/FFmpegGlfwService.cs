@@ -1,0 +1,17 @@
+using OpenTK.Windowing.GraphicsLibraryFramework;
+using Ralsei.Platform.OpenGL;
+
+namespace Ralsei.Desktop.FFmpeg;
+
+public class FFmpegGlfwService(OpenGLSettings glSettings) : GlfwService(glSettings)
+{
+    protected override void SetWindowHints(int width, int height, string title, bool useEgl)
+    {
+        base.SetWindowHints(width, height, title, useEgl);
+        
+        // Set additional hints for FFmpeg compatibility
+        GLFW.WindowHint(WindowHintBool.Resizable, false);
+        GLFW.WindowHint(WindowHintBool.Decorated, false);
+        GLFW.WindowHint(WindowHintBool.Visible, false);
+    }
+}

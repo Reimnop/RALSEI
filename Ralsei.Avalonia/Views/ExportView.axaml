@@ -1,0 +1,251 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:Ralsei.Avalonia.ViewModels"
+             xmlns:controls="clr-namespace:Ralsei.Avalonia.Controls"
+             xmlns:conv="clr-namespace:Ralsei.Avalonia.Converters"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+             x:Class="Ralsei.Avalonia.Views.ExportView"
+             x:DataType="vm:ExportViewModel"
+             Focusable="True">
+    <UserControl.Styles>
+        <Style Selector="ComboBox.Setting">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+    </UserControl.Styles>
+
+    <Panel>
+        <Border Background="{DynamicResource DialogOverlayColor}"
+                Opacity="0.6" />
+        <Border Background="{DynamicResource DialogBackgroundColor}"
+                BorderBrush="{DynamicResource BorderColor}"
+                BorderThickness="1"
+                CornerRadius="{DynamicResource XlCornerRadius}"
+                Margin="24"
+                Width="560"
+                MaxHeight="640"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+            <Grid RowDefinitions="Auto,Auto"
+                  Margin="24"
+                  RowSpacing="18">
+
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="h4"
+                               Text="Export a video" />
+                    <Button Grid.Column="1"
+                            Classes="Icon"
+                            Command="{Binding CloseCommand}"
+                            ToolTip.Tip="Close (the export goes on)"
+                            Width="30"
+                            Height="30"
+                            Content="{LucideIconContent X, Size=20}" />
+                </Grid>
+
+                <!-- What to make -->
+                <StackPanel Grid.Row="1"
+                            Spacing="16"
+                            IsVisible="{Binding IsSetup}">
+                    <TextBlock Text="{Binding Playback.Level.Title}"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" />
+
+                    <StackPanel Spacing="6">
+                        <controls:SettingsLabel Content="Save as" />
+                        <Grid ColumnDefinitions="*,Auto"
+                              ColumnSpacing="8">
+                            <TextBox IsReadOnly="True"
+                                     Text="{Binding OutputPath}" />
+                            <Button Grid.Column="1"
+                                    Classes="Outline"
+                                    Command="{Binding BrowseCommand}"
+                                    Content="Browse..." />
+                        </Grid>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <controls:SettingsLabel Content="What to make a video of" />
+                        <ComboBox Classes="Setting"
+                                  ItemsSource="{x:Static vm:ExportViewModel.RangeOptions}"
+                                  SelectedIndex="{Binding RangeIndex}" />
+                        <TextBlock Classes="Muted"
+                                   FontSize="12"
+                                   Text="{Binding RangeText}" />
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="12">
+                        <StackPanel Spacing="6">
+                            <controls:SettingsLabel Content="Size" />
+                            <ComboBox Classes="Setting"
+                                      ItemsSource="{x:Static vm:SettingsViewModel.ExportSizeNames}"
+                                      SelectedIndex="{Binding Settings.ExportSizeIndex}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1"
+                                    Spacing="6">
+                            <controls:SettingsLabel Content="Frames per second" />
+                            <ComboBox Classes="Setting"
+                                      ItemsSource="{x:Static vm:SettingsViewModel.ExportFramerateNames}"
+                                      SelectedIndex="{Binding Settings.ExportFramerateIndex}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Classes="Muted"
+                               TextWrapping="Wrap"
+                               Text="The video has the post-processing and the text of the settings. It is made as fast as this computer can, and the player can be used meanwhile." />
+
+                    <!-- FFmpeg -->
+                    <Border CornerRadius="{DynamicResource MdCornerRadius}"
+                            Padding="12,10"
+                            Background="#14808080">
+                        <Grid ColumnDefinitions="Auto,*,Auto"
+                              ColumnSpacing="10">
+                            <LucideIcon VerticalAlignment="Center"
+                                        Size="18"
+                                        Kind="{Binding Settings.IsFFmpegFound, Converter={x:Static conv:Converters.FoundIcon}}" />
+                            <StackPanel Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Spacing="2">
+                                <TextBlock TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Text="{Binding Settings.FFmpegStatus}" />
+                                <TextBlock Classes="Muted"
+                                           FontSize="11"
+                                           TextTrimming="PrefixCharacterEllipsis"
+                                           IsVisible="{Binding Settings.IsFFmpegFound}"
+                                           ToolTip.Tip="{Binding Settings.FFmpegLocation}"
+                                           Text="{Binding Settings.FFmpegLocation}" />
+                            </StackPanel>
+                            <Button Grid.Column="2"
+                                    Classes="Outline"
+                                    IsVisible="{Binding !Settings.IsFFmpegFound}"
+                                    Command="{Binding OpenFFmpegSettingsCommand}"
+                                    Content="Set up" />
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Spacing="8">
+                        <Button Classes="Ghost"
+                                Command="{Binding CloseCommand}"
+                                Content="Cancel" />
+                        <Button Classes="Primary"
+                                IsEnabled="{Binding CanStart}"
+                                Command="{Binding StartCommand}">
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <LucideIcon Kind="Film" Size="16" />
+                                <TextBlock Text="Make the video" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Being made -->
+                <StackPanel Grid.Row="1"
+                            Spacing="14"
+                            IsVisible="{Binding IsRunning}">
+                    <TextBlock Text="{Binding OutputName}"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="Muted"
+                               Text="{Binding SummaryText}" />
+                    <ProgressBar Minimum="0"
+                                 Maximum="1"
+                                 Margin="0,6,0,0"
+                                 Value="{Binding Progress}" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding ProgressText}" />
+                        <TextBlock Grid.Column="1"
+                                   Classes="Muted"
+                                   Text="{Binding DetailText}" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Spacing="8">
+                        <Button Classes="Ghost"
+                                Command="{Binding CloseCommand}"
+                                Content="Hide" />
+                        <Button Classes="Destructive"
+                                Command="{Binding CancelCommand}"
+                                Content="Stop" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Done -->
+                <StackPanel Grid.Row="1"
+                            Spacing="14"
+                            IsVisible="{Binding IsFinished}">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="10">
+                        <LucideIcon Kind="CircleCheck"
+                                    Size="22"
+                                    VerticalAlignment="Center" />
+                        <TextBlock Classes="h4"
+                                   VerticalAlignment="Center"
+                                   Text="The video is ready" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding OutputPath}"
+                               FontFamily="{StaticResource JetbrainsFont}"
+                               FontSize="12"
+                               TextWrapping="Wrap" />
+                    <TextBlock Classes="Muted"
+                               Text="{Binding ResultText}" />
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Spacing="8">
+                        <Button Classes="Ghost"
+                                Command="{Binding AgainCommand}"
+                                Content="Make another" />
+                        <Button Classes="Outline"
+                                Command="{Binding ShowInFolderCommand}"
+                                Content="Show in folder" />
+                        <Button Classes="Primary"
+                                Command="{Binding PlayVideoCommand}">
+                            <StackPanel Orientation="Horizontal"
+                                        Spacing="8">
+                                <LucideIcon Kind="Play" Size="16" />
+                                <TextBlock Text="Play" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Failed -->
+                <StackPanel Grid.Row="1"
+                            Spacing="14"
+                            IsVisible="{Binding IsFailed}">
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="10">
+                        <LucideIcon Kind="CircleAlert"
+                                    Size="22"
+                                    VerticalAlignment="Center" />
+                        <TextBlock Classes="h4"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding ErrorTitle}" />
+                    </StackPanel>
+                    <ScrollViewer MaxHeight="220"
+                                  IsVisible="{Binding HasErrorDetails}">
+                        <TextBlock Text="{Binding ErrorDetails}"
+                                   FontFamily="{StaticResource JetbrainsFont}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap" />
+                    </ScrollViewer>
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Spacing="8">
+                        <Button Classes="Ghost"
+                                Command="{Binding CopyDetailsCommand}"
+                                Content="Copy" />
+                        <Button Classes="Primary"
+                                Command="{Binding AgainCommand}"
+                                Content="Try again" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Panel>
+</UserControl>

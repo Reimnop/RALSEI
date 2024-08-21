@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>shaderproc</AssemblyName>
+    <RootNamespace>Ralsei.ShaderProcessor.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ralsei.ShaderProcessor\Ralsei.ShaderProcessor.csproj" />
+  </ItemGroup>
+
+</Project>

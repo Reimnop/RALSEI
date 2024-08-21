@@ -1,0 +1,151 @@
+using OpenTK.Graphics.OpenGLES2;
+using System.Numerics;
+using Pamx.Events;
+using Ralsei.Core;
+using Ralsei.Core.Data;
+using Ralsei.Mathematics;
+using Ralsei.Rendering.Common;
+using Ralsei.Rendering.Data;
+
+namespace Ralsei.Rendering.OpenGLES.PostProcessing;
+
+public class UberPost : IDisposable
+{
+    private readonly int program;
+    
+    private readonly int outputSizeUniformLocation;
+    private readonly int hueShiftAngleUniformLocation;
+    
+    private readonly int lensDistortionIntensityUniformLocation;
+    private readonly int lensDistortionCenterUniformLocation;
+    
+    private readonly int chromaticAberrationIntensityUniformLocation;
+    
+    private readonly int vignetteCenterUniformLocation;
+    private readonly int vignetteIntensityUniformLocation;
+    private readonly int vignetteRoundnessUniformLocation;
+    private readonly int vignetteSmoothnessUniformLocation;
+    private readonly int vignetteColorUniformLocation;
+    private readonly int vignetteModeUniformLocation;
+    
+    private readonly int gradientColor1UniformLocation;
+    private readonly int gradientColor2UniformLocation;
+    private readonly int gradientIntensityUniformLocation;
+    private readonly int gradientRotationUniformLocation;
+    private readonly int gradientModeUniformLocation;
+    
+    private readonly int framebuffer;
+
+    private readonly int vaoHandle;
+
+    public UberPost(ResourceLoader loader, int vertexShader)
+    {
+        program = LoaderUtil.LoadPostProcessingProgram(loader, "UberPost", vertexShader);
+        
+        outputSizeUniformLocation = GL.GetUniformLocation(program, "uOutputSize");
+        hueShiftAngleUniformLocation = GL.GetUniformLocation(program, "uHueShiftAngle");
+        
+        lensDistortionIntensityUniformLocation = GL.GetUniformLocation(program, "uLensDistortionIntensity");
+        lensDistortionCenterUniformLocation = GL.GetUniformLocation(program, "uLensDistortionCenter");
+        
+        chromaticAberrationIntensityUniformLocation = GL.GetUniformLocation(program, "uChromaticAberrationIntensity");
+        
+        vignetteCenterUniformLocation = GL.GetUniformLocation(program, "uVignetteCenter");
+        vignetteIntensityUniformLocation = GL.GetUniformLocation(program, "uVignetteIntensity");
+        vignetteRoundnessUniformLocation = GL.GetUniformLocation(program, "uVignetteRoundness");
+        vignetteSmoothnessUniformLocation = GL.GetUniformLocation(program, "uVignetteSmoothness");
+        vignetteColorUniformLocation = GL.GetUniformLocation(program, "uVignetteColor");
+        vignetteModeUniformLocation = GL.GetUniformLocation(program, "uVignetteMode");
+        
+        gradientColor1UniformLocation = GL.GetUniformLocation(program, "uGradientColor1");
+        gradientColor2UniformLocation = GL.GetUniformLocation(program, "uGradientColor2");
+        gradientIntensityUniformLocation = GL.GetUniformLocation(program, "uGradientIntensity");
+        gradientRotationUniformLocation = GL.GetUniformLocation(program, "uGradientRotation");
+        gradientModeUniformLocation = GL.GetUniformLocation(program, "uGradientMode");
+        
+        // Initialize framebuffer
+        framebuffer = GL.GenFramebuffer();
+        
+        // Initialize a simple VAO
+        vaoHandle = GL.GenVertexArray();
+    }
+    
+    public bool Process(
+        Vector2i size,
+        float hueShiftAngle,
+        float lensDistortionIntensity,
+        Vector2 lensDistortionCenter, 
+        float chromaticAberrationIntensity,
+        Vector2 vignetteCenter, float vignetteIntensity, bool vignetteRounded, float vignetteRoundness, float vignetteSmoothness, ColorRgb vignetteColor, VignetteMode vignetteMode,
+        ColorRgb gradientColor1, ColorRgb gradientColor2, float gradientIntensity, float gradientRotation, GradientOverlayMode gradientMode,
+        int inputTexture, int outputTexture)
+    {
+        vignetteColor = ColorUtil.SrgbToLinear(vignetteColor);
+        // gradient is done in gamma, so don't convert
+        
+        // Attach output texture to framebuffer
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, outputTexture, 0);
+        GL.Viewport(0, 0, size.X, size.Y);
+        
+        // Do our processing
+        GL.UseProgram(program);
+        
+        GL.ActiveTexture(TextureUnit.Texture0);
+        GL.BindTexture(TextureTarget.Texture2d, inputTexture);
+        
+        GL.Uniform2i(outputSizeUniformLocation, size.X, size.Y);
+        GL.Uniform1f(hueShiftAngleUniformLocation, hueShiftAngle);
+        
+        GL.Uniform1f(lensDistortionIntensityUniformLocation, lensDistortionIntensity);
+        GL.Uniform2f(lensDistortionCenterUniformLocation, 1, lensDistortionCenter);
+        
+        GL.Uniform1f(chromaticAberrationIntensityUniformLocation, chromaticAberrationIntensity);
+        
+        GL.Uniform2f(vignetteCenterUniformLocation, 1, vignetteCenter);
+        GL.Uniform1f(vignetteIntensityUniformLocation, vignetteIntensity * 3.0f);
+        
+        if (vignetteMode == VignetteMode.UseRounded)
+        {
+            GL.Uniform1f(vignetteRoundnessUniformLocation, vignetteRounded ? 1f : 0f);
+            GL.Uniform1i(vignetteModeUniformLocation, 0);
+        }
+        else
+        {
+            var roundness = (1f - vignetteRoundness) * 6f + vignetteRoundness;
+            GL.Uniform1f(vignetteRoundnessUniformLocation, roundness);
+            GL.Uniform1i(vignetteModeUniformLocation, 1);
+        }
+        
+        GL.Uniform1f(vignetteSmoothnessUniformLocation, vignetteSmoothness * 5.0f);
+        GL.Uniform3f(vignetteColorUniformLocation, vignetteColor.R, vignetteColor.G, vignetteColor.B);
+        
+        GL.Uniform3f(gradientColor1UniformLocation, gradientColor1.R, gradientColor1.G, gradientColor1.B);
+        GL.Uniform3f(gradientColor2UniformLocation, gradientColor2.R, gradientColor2.G, gradientColor2.B);
+        GL.Uniform1f(gradientIntensityUniformLocation, gradientIntensity);
+        
+        unsafe
+        {
+            var rotationMatrix = stackalloc float[4];
+            rotationMatrix[0] = MathF.Cos(gradientRotation);
+            rotationMatrix[1] = -MathF.Sin(gradientRotation);
+            rotationMatrix[2] = MathF.Sin(gradientRotation);
+            rotationMatrix[3] = MathF.Cos(gradientRotation);
+            GL.UniformMatrix2fv(gradientRotationUniformLocation, 1, false, rotationMatrix);
+        }
+        
+        GL.Uniform1i(gradientModeUniformLocation, (int) gradientMode);
+        
+        GL.BindVertexArray(vaoHandle);
+        GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
+        
+        return true;
+    }
+
+    public void Dispose()
+    {
+        GL.DeleteProgram(program);
+        GL.DeleteFramebuffer(framebuffer);
+        GL.DeleteVertexArray(vaoHandle);
+    }
+}

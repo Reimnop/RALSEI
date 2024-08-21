@@ -1,0 +1,71 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Buttons on top of the level. The level can be any color, so these do not follow the theme. -->
+    <Style Selector="Button.PlaybackIcon">
+        <Setter Property="Width" Value="36" />
+        <Setter Property="Height" Value="36" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="{DynamicResource FullCornerRadius}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Cursor" Value="Hand" />
+        <!-- A button that has the focus would get the space bar, which belongs to the player -->
+        <Setter Property="Focusable" Value="False" />
+        <Style Selector="^ /template/ ContentPresenter">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="^ /template/ Border#HoverBackground">
+            <Setter Property="Background" Value="#33FFFFFF" />
+        </Style>
+        <Style Selector="^.Active">
+            <Setter Property="Background" Value="#40FFFFFF" />
+        </Style>
+    </Style>
+
+    <Style Selector="Button.PlaybackText">
+        <Setter Property="Height" Value="36" />
+        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="{DynamicResource FullCornerRadius}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="False" />
+        <Style Selector="^ /template/ ContentPresenter">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="^ /template/ Border#HoverBackground">
+            <Setter Property="Background" Value="#33FFFFFF" />
+        </Style>
+    </Style>
+
+    <!-- The bars over the level fade away while nothing moves -->
+    <Style Selector="Panel.AutoHide">
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Grid.Idle Panel.AutoHide">
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+    <Style Selector="Grid.Idle">
+        <Setter Property="Cursor" Value="None" />
+    </Style>
+
+    <!-- The message that shows up when something changes (the volume, a seek) -->
+    <Style Selector="Border.Osd">
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.18" />
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Border.Osd.Shown">
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+</Styles>

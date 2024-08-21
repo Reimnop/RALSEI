@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/player_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black">
+
+  <!-- The surface the level is drawn on goes below all of this, it is added in code -->
+
+  <FrameLayout
+      android:id="@+id/controls"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent"
+      android:visibility="gone">
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="140dp"
+        android:layout_gravity="top"
+        android:background="@drawable/scrim_top" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="180dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/scrim_bottom" />
+
+    <LinearLayout
+        android:id="@+id/top_bar"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+      <ImageButton
+          android:id="@+id/close_button"
+          android:src="@drawable/ic_arrow_back"
+          android:background="@drawable/bg_round_button"
+          android:contentDescription="@string/back"
+          android:layout_width="48dp"
+          android:layout_height="48dp" />
+
+      <LinearLayout
+          android:orientation="vertical"
+          android:layout_width="0dp"
+          android:layout_height="wrap_content"
+          android:layout_weight="1"
+          android:layout_marginLeft="16dp"
+          android:layout_marginRight="16dp">
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/title"
+            style="@style/TextAppearance.Material3.TitleMedium"
+            android:textColor="@android:color/white"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/subtitle"
+            style="@style/TextAppearance.Material3.BodySmall"
+            android:textColor="#CCFFFFFF"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+      </LinearLayout>
+
+      <ImageButton
+          android:id="@+id/settings_button"
+          android:src="@drawable/ic_tune"
+          android:background="@drawable/bg_round_button"
+          android:contentDescription="@string/settings"
+          android:layout_width="48dp"
+          android:layout_height="48dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center">
+
+      <com.google.android.material.button.MaterialButton
+          android:id="@+id/seek_back_button"
+          style="@style/Widget.Material3.Button.TextButton"
+          android:text="@string/seek_back"
+          android:textColor="@android:color/white"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content" />
+
+      <ImageButton
+          android:id="@+id/play_pause_button"
+          android:src="@drawable/ic_pause"
+          android:background="@drawable/bg_round_button"
+          android:contentDescription="@string/play_pause"
+          android:scaleType="center"
+          android:layout_width="72dp"
+          android:layout_height="72dp"
+          android:layout_marginLeft="16dp"
+          android:layout_marginRight="16dp" />
+
+      <com.google.android.material.button.MaterialButton
+          android:id="@+id/seek_forward_button"
+          style="@style/Widget.Material3.Button.TextButton"
+          android:text="@string/seek_forward"
+          android:textColor="@android:color/white"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/bottom_bar"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:paddingLeft="20dp"
+        android:paddingRight="20dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="12dp">
+
+      <com.google.android.material.textview.MaterialTextView
+          android:id="@+id/time_current"
+          style="@style/TextAppearance.Material3.LabelLarge"
+          android:textColor="@android:color/white"
+          android:text="0:00"
+          android:minWidth="44dp"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content" />
+
+      <SeekBar
+          android:id="@+id/seek_bar"
+          android:max="1000"
+          android:progressTint="?attr/colorPrimary"
+          android:thumbTint="?attr/colorPrimary"
+          android:progressBackgroundTint="#66FFFFFF"
+          android:layout_width="0dp"
+          android:layout_height="wrap_content"
+          android:layout_weight="1"
+          android:layout_marginLeft="4dp"
+          android:layout_marginRight="4dp" />
+
+      <com.google.android.material.textview.MaterialTextView
+          android:id="@+id/time_total"
+          style="@style/TextAppearance.Material3.LabelLarge"
+          android:textColor="@android:color/white"
+          android:text="0:00"
+          android:minWidth="44dp"
+          android:gravity="end"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content" />
+    </LinearLayout>
+  </FrameLayout>
+
+  <!-- Kept clear of the system bars and the cutout, which are padded in code -->
+  <FrameLayout
+      android:id="@+id/stats_container"
+      android:padding="8dp"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent">
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/stats"
+        style="@style/TextAppearance.Material3.LabelMedium"
+        android:textColor="@android:color/white"
+        android:fontFamily="monospace"
+        android:background="@color/stats_background"
+        android:padding="6dp"
+        android:visibility="gone"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start" />
+  </FrameLayout>
+
+  <com.google.android.material.textview.MaterialTextView
+      android:id="@+id/seek_hint"
+      style="@style/TextAppearance.Material3.HeadlineSmall"
+      android:textColor="@android:color/white"
+      android:background="@color/stats_background"
+      android:paddingLeft="16dp"
+      android:paddingRight="16dp"
+      android:paddingTop="8dp"
+      android:paddingBottom="8dp"
+      android:alpha="0"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_gravity="center" />
+
+  <!-- Loading and failing -->
+  <LinearLayout
+      android:id="@+id/loading"
+      android:orientation="vertical"
+      android:gravity="center"
+      android:background="@android:color/black"
+      android:clickable="true"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent">
+
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+        android:id="@+id/loading_indicator"
+        android:indeterminate="true"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/loading_text"
+        style="@style/TextAppearance.Material3.BodyLarge"
+        android:textColor="@android:color/white"
+        android:text="@string/loading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp" />
+  </LinearLayout>
+
+  <LinearLayout
+      android:id="@+id/error"
+      android:orientation="vertical"
+      android:gravity="center"
+      android:background="@android:color/black"
+      android:clickable="true"
+      android:visibility="gone"
+      android:padding="32dp"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent">
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/error_title"
+        style="@style/TextAppearance.Material3.TitleLarge"
+        android:textColor="@android:color/white"
+        android:gravity="center"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/error_message"
+        style="@style/TextAppearance.Material3.BodyMedium"
+        android:textColor="#CCFFFFFF"
+        android:gravity="center"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp" />
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp">
+
+      <com.google.android.material.button.MaterialButton
+          android:id="@+id/error_back"
+          style="@style/Widget.Material3.Button.OutlinedButton"
+          android:text="@string/back"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content" />
+
+      <com.google.android.material.button.MaterialButton
+          android:id="@+id/error_action"
+          style="@style/Widget.Material3.Button"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:layout_marginLeft="12dp" />
+    </LinearLayout>
+  </LinearLayout>
+</FrameLayout>

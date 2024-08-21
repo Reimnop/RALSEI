@@ -1,0 +1,298 @@
+import { NativeObject } from "../NativeObject";
+import type { Module } from "../Module";
+import type { BeatmapObjectType } from "../data/BeatmapObjectType";
+import type { BeatmapObjectParentType } from "../data/BeatmapObjectParentType";
+import type { BeatmapObjectParentOffset } from "../data/BeatmapObjectParentOffset";
+import type { BeatmapObjectRenderType } from "../data/BeatmapObjectRenderType";
+import type { BeatmapObjectRenderLayer } from "../data/BeatmapObjectRenderLayer";
+import type { Vector } from "../data/Vector";
+import type { BeatmapObjectAutoKillType } from "../data/BeatmapObjectAutoKillType";
+import type { BeatmapObjectShape } from "../data/BeatmapObjectShape";
+import { FixedSizeKeyframeList } from "./FixedSizeKeyframeList";
+import type { Keyframe, RandomizableKeyframe } from "../data/Keyframe";
+import type { BeatmapObjectIndexedColor } from "../data/BeatmapObjectIndexedColor";
+import type { KeyframeList } from "./KeyframeList";
+import { KeyframeCodec, RandomizableKeyframeCodec } from "./FixedSizeKeyframeCodec";
+import { BeatmapObjectIndexedColorCodec, Float32Codec, Vector2Codec } from "./StructCodec";
+import type { ShapeParameters } from "../data/ShapeParameters";
+import type { ParticleParams } from "../data/ParticleParams";
+
+export class BeatmapObject extends NativeObject {
+  static create(module: Module, id: string): BeatmapObject {
+    const sp = module.wasm.stackSave();
+    try {
+      const idPtr = module.interopHelper.stringToUTF8OnStack(id);
+      const ptr = module.wasm._beatmapObject_new(idPtr);
+      return new BeatmapObject(module, ptr);
+    } finally {
+      module.wasm.stackRestore(sp);
+    }
+  }
+  
+  get id(): string {
+    return this.interopHelper.getStringFromObjectNotNull(this.ptr, this.wasm._beatmapObject_getId);
+  }
+  
+  get name(): string {
+    return this.interopHelper.getStringFromObjectNotNull(this.ptr, this.wasm._beatmapObject_getName);
+  }
+  
+  set name(value: string) {
+    this.interopHelper.setStringToObject(this.ptr, value, this.wasm._beatmapObject_setName);
+  }
+  
+  get parentId(): string | null {
+    return this.interopHelper.getStringFromObject(this.ptr, this.wasm._beatmapObject_getParentId);
+  }
+  
+  set parentId(value: string | null) {
+    this.interopHelper.setStringToObject(this.ptr, value, this.wasm._beatmapObject_setParentId);
+  }
+  
+  get type(): BeatmapObjectType {
+    return this.wasm._beatmapObject_getType(this.ptr);
+  }
+  
+  set type(value: BeatmapObjectType) {
+    this.wasm._beatmapObject_setType(this.ptr, value);
+  }
+  
+  get parentType(): BeatmapObjectParentType {
+    return this.wasm._beatmapObject_getParentType(this.ptr);
+  }
+  
+  set parentType(value: BeatmapObjectParentType) {
+    this.wasm._beatmapObject_setParentType(this.ptr, value);
+  }
+  
+  get parentOffset(): BeatmapObjectParentOffset {
+    const sp = this.wasm.stackSave();
+    try {
+      const buf = this.wasm.stackAlloc(12); // allocate buffer for 3 f32 values
+      this.wasm._beatmapObject_getParentOffset(this.ptr, buf);
+      const position = this.wasm.HEAP_DATA_VIEW.getFloat32(buf, true);
+      const scale = this.wasm.HEAP_DATA_VIEW.getFloat32(buf + 4, true);
+      const rotation = this.wasm.HEAP_DATA_VIEW.getFloat32(buf + 8, true);
+      return { position, scale, rotation };
+    } finally {
+      this.wasm.stackRestore(sp);
+    }
+  }
+  
+  set parentOffset(value: BeatmapObjectParentOffset) {
+    const sp = this.wasm.stackSave();
+    try {
+      const buf = this.wasm.stackAlloc(12); // allocate buffer for 3 f32 values
+      this.wasm.HEAP_DATA_VIEW.setFloat32(buf, value.position, true);
+      this.wasm.HEAP_DATA_VIEW.setFloat32(buf + 4, value.scale, true);
+      this.wasm.HEAP_DATA_VIEW.setFloat32(buf + 8, value.rotation, true);
+      this.wasm._beatmapObject_setParentOffset(this.ptr, buf);
+    } finally {
+      this.wasm.stackRestore(sp);
+    }
+  }
+  
+  get renderType(): BeatmapObjectRenderType {
+    return this.wasm._beatmapObject_getRenderType(this.ptr);
+  }
+  
+  set renderType(value: BeatmapObjectRenderType) {
+    this.wasm._beatmapObject_setRenderType(this.ptr, value);
+  }
+  
+  get origin(): Vector<2> {
+    const sp = this.wasm.stackSave();
+    try {
+      const buf = this.wasm.stackAlloc(8); // allocate buffer for 2 f32 values
+      this.wasm._beatmapObject_getOrigin(this.ptr, buf);
+      const x = this.wasm.HEAP_DATA_VIEW.getFloat32(buf, true);
+      const y = this.wasm.HEAP_DATA_VIEW.getFloat32(buf + 4, true);
+      return [x, y];
+    } finally {
+      this.wasm.stackRestore(sp);
+    }
+  }
+  
+  set origin(value: Vector<2>) {
+    const sp = this.wasm.stackSave();
+    try {
+      const buf = this.wasm.stackAlloc(8); // allocate buffer for 2 f32 values
+      this.wasm.HEAP_DATA_VIEW.setFloat32(buf, value[0], true);
+      this.wasm.HEAP_DATA_VIEW.setFloat32(buf + 4, value[1], true);
+      this.wasm._beatmapObject_setOrigin(this.ptr, buf);
+    } finally {
+      this.wasm.stackRestore(sp);
+    }
+  }
+  
+  get renderDepth(): number {
+    return this.wasm._beatmapObject_getRenderDepth(this.ptr);
+  }
+  
+  set renderDepth(value: number) {
+    this.wasm._beatmapObject_setRenderDepth(this.ptr, value);
+  }
+  
+  get renderLayer(): BeatmapObjectRenderLayer {
+    return this.wasm._beatmapObject_getRenderLayer(this.ptr);
+  }
+  
+  set renderLayer(value: BeatmapObjectRenderLayer) {
+    this.wasm._beatmapObject_setRenderLayer(this.ptr, value);
+  }
+  
+  get startTime(): number {
+    return this.wasm._beatmapObject_getStartTime(this.ptr);
+  }
+  
+  set startTime(value: number) {
+    this.wasm._beatmapObject_setStartTime(this.ptr, value);
+  }
+  
+  get autoKillType(): BeatmapObjectAutoKillType {
+    return this.wasm._beatmapObject_getAutoKillType(this.ptr);
+  }
+  
+  set autoKillType(value: BeatmapObjectAutoKillType) {
+    this.wasm._beatmapObject_setAutoKillType(this.ptr, value);
+  }
+  
+  get autoKillOffset(): number {
+    return this.wasm._beatmapObject_getAutoKillOffset(this.ptr);
+  }
+  
+  set autoKillOffset(value: number) {
+    this.wasm._beatmapObject_setAutoKillOffset(this.ptr, value);
+  }
+  
+  get shape(): BeatmapObjectShape {
+    return this.wasm._beatmapObject_getShape(this.ptr);
+  }
+  
+  set shape(value: BeatmapObjectShape) {
+    this.wasm._beatmapObject_setShape(this.ptr, value);
+  }
+  
+  get customShapeInfo(): ShapeParameters | null {
+    const sp = this.wasm.stackSave();
+    try {
+      const buf = this.wasm.stackAlloc(16); // allocate buffer
+      const hasInfo = this.wasm._beatmapObject_getCustomShapeInfo(this.ptr, buf);
+      if (!hasInfo) {
+        return null;
+      }
+      const sides = this.wasm.HEAP_DATA_VIEW.getInt32(buf, true);
+      const roundness = this.wasm.HEAP_DATA_VIEW.getFloat32(buf + 4, true);
+      const thickness = this.wasm.HEAP_DATA_VIEW.getFloat32(buf + 8, true);
+      const sliceCount = this.wasm.HEAP_DATA_VIEW.getInt32(buf + 12, true);
+      return { sides, roundness, thickness, sliceCount };
+    } finally {
+      this.wasm.stackRestore(sp);
+    }
+  }
+  
+  set customShapeInfo(value: ShapeParameters | null) {
+    const sp = this.wasm.stackSave();
+    try {
+      if (value) {
+        const buf = this.wasm.stackAlloc(16); // allocate buffer
+        this.wasm.HEAP_DATA_VIEW.setInt32(buf, value.sides, true);
+        this.wasm.HEAP_DATA_VIEW.setFloat32(buf + 4, value.roundness, true);
+        this.wasm.HEAP_DATA_VIEW.setFloat32(buf + 8, value.thickness, true);
+        this.wasm.HEAP_DATA_VIEW.setInt32(buf + 12, value.sliceCount, true);
+        this.wasm._beatmapObject_setCustomShapeInfo(this.ptr, buf);
+      } else {
+        this.wasm._beatmapObject_setCustomShapeInfo(this.ptr, 0);
+      }
+    } finally {
+      this.wasm.stackRestore(sp);
+    }
+  }
+  
+  get particleParams(): ParticleParams | null {
+    const sp = this.wasm.stackSave();
+    try {
+      const buf = this.wasm.stackAlloc(24); // allocate buffer
+      const hasParams = this.wasm._beatmapObject_getParticleParams(this.ptr, buf);
+      if (!hasParams) {
+        return null;
+      }
+      const particlesPerSecond = this.wasm.HEAP_DATA_VIEW.getFloat32(buf, true);
+      const particlesPerUnit = this.wasm.HEAP_DATA_VIEW.getFloat32(buf + 4, true);
+      const flags = this.wasm.HEAP_DATA_VIEW.getInt32(buf + 8, true);
+      const radialCircleArc = this.wasm.HEAP_DATA_VIEW.getFloat32(buf + 12, true);
+      const radialCircleRadius = this.wasm.HEAP_DATA_VIEW.getFloat32(buf + 16, true);
+      const radialStartSpeed = this.wasm.HEAP_DATA_VIEW.getFloat32(buf + 20, true);
+      return {
+        particlesPerSecond,
+        particlesPerUnit,
+        world: (flags & 1) !== 0,
+        despawnOnEnd: (flags & 2) !== 0,
+        radial: (flags & 4) !== 0,
+        radialCircleArc,
+        radialCircleRadius,
+        radialStartSpeed,
+        anchored: (flags & 8) !== 0,
+      };
+    } finally {
+      this.wasm.stackRestore(sp);
+    }
+  }
+  
+  set particleParams(value: ParticleParams | null) {
+    const sp = this.wasm.stackSave();
+    try {
+      if (value) {
+        const buf = this.wasm.stackAlloc(24); // allocate buffer
+        const flags = (value.world ? 1 : 0) | (value.despawnOnEnd ? 2 : 0) | (value.radial ? 4 : 0) | (value.anchored ? 8 : 0);
+        this.wasm.HEAP_DATA_VIEW.setFloat32(buf, value.particlesPerSecond, true);
+        this.wasm.HEAP_DATA_VIEW.setFloat32(buf + 4, value.particlesPerUnit, true);
+        this.wasm.HEAP_DATA_VIEW.setInt32(buf + 8, flags, true);
+        this.wasm.HEAP_DATA_VIEW.setFloat32(buf + 12, value.radialCircleArc, true);
+        this.wasm.HEAP_DATA_VIEW.setFloat32(buf + 16, value.radialCircleRadius, true);
+        this.wasm.HEAP_DATA_VIEW.setFloat32(buf + 20, value.radialStartSpeed, true);
+        this.wasm._beatmapObject_setParticleParams(this.ptr, buf);
+      } else {
+        this.wasm._beatmapObject_setParticleParams(this.ptr, 0);
+      }
+    } finally {
+      this.wasm.stackRestore(sp);
+    }
+  }
+  
+  get text(): string | null {
+    return this.interopHelper.getStringFromObject(this.ptr, this.wasm._beatmapObject_getText);
+  }
+  
+  set text(value: string | null) {
+    this.interopHelper.setStringToObject(this.ptr, value, this.wasm._beatmapObject_setText);
+  }
+  
+  get positionKeyframes(): KeyframeList<RandomizableKeyframe<Vector<2>>> {
+    const keyframesPtr = this.wasm._beatmapObject_getPositionKeyframes(this.ptr);
+    return new FixedSizeKeyframeList<RandomizableKeyframe<Vector<2>>>(
+      this.module, keyframesPtr,
+      new RandomizableKeyframeCodec<Vector<2>>(this.module, new Vector2Codec()));
+  }
+
+  get scaleKeyframes(): KeyframeList<RandomizableKeyframe<Vector<2>>> {
+    const keyframesPtr = this.wasm._beatmapObject_getScaleKeyframes(this.ptr);
+    return new FixedSizeKeyframeList<RandomizableKeyframe<Vector<2>>>(
+      this.module, keyframesPtr,
+      new RandomizableKeyframeCodec<Vector<2>>(this.module, new Vector2Codec()));
+  }
+
+  get rotationKeyframes(): KeyframeList<RandomizableKeyframe<number>> {
+    const keyframesPtr = this.wasm._beatmapObject_getRotationKeyframes(this.ptr);
+    return new FixedSizeKeyframeList<RandomizableKeyframe<number>>(
+      this.module, keyframesPtr,
+      new RandomizableKeyframeCodec<number>(this.module, new Float32Codec()));
+  }
+
+  get colorKeyframes(): KeyframeList<Keyframe<BeatmapObjectIndexedColor>> {
+    const colorKeyframesPtr = this.wasm._beatmapObject_getColorKeyframes(this.ptr);
+    return new FixedSizeKeyframeList<Keyframe<BeatmapObjectIndexedColor>>(
+      this.module, colorKeyframesPtr,
+      new KeyframeCodec<BeatmapObjectIndexedColor>(this.module, new BeatmapObjectIndexedColorCodec()));
+  }
+}

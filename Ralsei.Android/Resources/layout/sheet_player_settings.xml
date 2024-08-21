@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+  <LinearLayout
+      android:orientation="vertical"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:paddingLeft="24dp"
+      android:paddingRight="24dp"
+      android:paddingTop="8dp"
+      android:paddingBottom="24dp">
+
+    <com.google.android.material.textview.MaterialTextView
+        style="@style/TextAppearance.Material3.TitleLarge"
+        android:text="@string/quick_settings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp" />
+
+    <com.google.android.material.textview.MaterialTextView
+        style="@style/SettingLabel"
+        android:text="@string/speed"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="4dp" />
+
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/speed_group"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:singleSelection="true"
+        app:selectionRequired="true" />
+
+    <com.google.android.material.textview.MaterialTextView
+        style="@style/SettingLabel"
+        android:text="@string/volume"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp" />
+
+    <SeekBar
+        android:id="@+id/volume_bar"
+        android:max="100"
+        android:progressTint="?attr/colorPrimary"
+        android:thumbTint="?attr/colorPrimary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:minHeight="48dp" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/sheet_post_processing"
+        android:text="@string/enable_post_processing"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/sheet_text"
+        android:text="@string/enable_text_rendering"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/sheet_lock_aspect"
+        android:text="@string/lock_aspect_ratio"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/sheet_loop"
+        android:text="@string/loop"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/sheet_stats"
+        android:text="@string/show_stats"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="48dp" />
+  </LinearLayout>
+</ScrollView>

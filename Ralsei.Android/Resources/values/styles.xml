@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="app_theme" parent="Theme.Material3.DayNight.NoActionBar">
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowLightStatusBar">?attr/isLightTheme</item>
+  </style>
+
+  <!-- The player is always dark: the level is the only thing that should have colors -->
+  <style name="player_theme" parent="Theme.Material3.Dark.NoActionBar">
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowBackground">@android:color/black</item>
+  </style>
+
+  <style name="SectionTitle" parent="TextAppearance.Material3.TitleSmall">
+    <item name="android:textColor">?attr/colorPrimary</item>
+  </style>
+
+  <style name="SettingLabel" parent="TextAppearance.Material3.BodyLarge">
+    <item name="android:textColor">?attr/colorOnSurface</item>
+  </style>
+</resources>

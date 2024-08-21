@@ -1,0 +1,37 @@
+<Solution>
+  <Folder Name="/Pamx/">
+    <Project Path="Pamx/Pamx/Pamx.csproj" />
+  </Folder>
+  <Folder Name="/Reimnop.MvvmHelper/">
+    <Project Path="Reimnop.MvvmHelper/Reimnop.MvvmHelper.Generator/Reimnop.MvvmHelper.Generator.csproj" />
+    <Project Path="Reimnop.MvvmHelper/Reimnop.MvvmHelper/Reimnop.MvvmHelper.csproj" />
+  </Folder>
+  <Folder Name="/Resources/">
+    <Project Path="Ralsei.Resources.Compressed/Ralsei.Resources.Compressed.csproj" />
+    <Project Path="Ralsei.Resources.Raw/Ralsei.Resources.Raw.csproj" />
+  </Folder>
+  <Folder Name="/Tmpx/">
+    <Project Path="Tmpx/Tmpx.Common/Tmpx.Common.csproj" />
+    <Project Path="Tmpx/Tmpx.Demo/Tmpx.Demo.csproj" />
+    <Project Path="Tmpx/Tmpx.Generator/Tmpx.Generator.csproj" />
+    <Project Path="Tmpx/Tmpx.Tests/Tmpx.Tests.csproj" />
+    <Project Path="Tmpx/Tmpx/Tmpx.csproj" />
+  </Folder>
+  <Project Path="Ralsei.Android/Ralsei.Android.csproj">
+    <Deploy />
+  </Project>
+  <Project Path="Ralsei.Avalonia/Ralsei.Avalonia.csproj" />
+  <Project Path="Ralsei.Desktop/Ralsei.Desktop.csproj" />
+  <Project Path="Ralsei.Mathematics/Ralsei.Mathematics.csproj" />
+  <Project Path="Ralsei.Redist/Ralsei.Redist.csproj" />
+  <Project Path="Ralsei.Rendering.Common/Ralsei.Rendering.Common.csproj" />
+  <Project Path="Ralsei.Rendering.OpenGL/Ralsei.Rendering.OpenGL.csproj" />
+  <Project Path="Ralsei.Rendering.OpenGLES/Ralsei.Rendering.OpenGLES.csproj" />
+  <Project Path="Ralsei.Rendering.Vulkan/Ralsei.Rendering.Vulkan.csproj" />
+  <Project Path="Ralsei.ShaderProcessor.Cli/Ralsei.ShaderProcessor.Cli.csproj" />
+  <Project Path="Ralsei.ShaderProcessor.Tests/Ralsei.ShaderProcessor.Tests.csproj" />
+  <Project Path="Ralsei.ShaderProcessor/Ralsei.ShaderProcessor.csproj" />
+  <Project Path="Ralsei.Tests/Ralsei.Tests.csproj" />
+  <Project Path="Ralsei.Wasm/Ralsei.Wasm.csproj" />
+  <Project Path="Ralsei/Ralsei.csproj" />
+</Solution>

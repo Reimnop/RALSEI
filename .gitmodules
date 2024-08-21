@@ -1,0 +1,4 @@
+[submodule "Pamx"]
+	path = Pamx
+	url = https://github.com/Reimnop/Pamx
+	branch = neo
