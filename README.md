@@ -142,6 +142,14 @@ Contributions are welcome! Please feel free to submit issues, fork the repositor
 
 This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) file for details.
 
+### Fork rules
+
+Forks and contributions are welcome, but please note that the following rules apply:
+- Forks must be open source and licensed under the GPLv3 License.
+- Forks must not contain copyrighted code or content from third parties.
+- Forks must not be made for the purpose of creating a competing product or service to any propriatary software or service.
+- Forks must contain this notice and the original authorship information.
+
 ## Acknowledgements
 
 - [OpenTK](https://opentk.net/)
