@@ -1,6 +1,6 @@
 # RALSEI
 
-> **RALSEI** (Radical Animation Layering & Simulation Engine Interface) is a lightweight, fast animation player
+> **RALSEI** (Radical Animation Layering & Simulation Engine Infrastructure) is a lightweight, fast animation player
 > for keyframed 2D scenes.
 
 ## Features
