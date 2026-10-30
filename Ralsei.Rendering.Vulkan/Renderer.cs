@@ -131,6 +131,9 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
         public ColorRgba ClearColor;
         public float Opacity;
         public ClipRect Viewport;
+
+        /// <summary>The part of the target the pass works on, if only a part (see <see cref="PassRegion"/>).</summary>
+        public ClipRect Region;
         public PostProcessingState PostProcessingState;
         public readonly List<PageDraw> OpaquePageDraws = [];
         public readonly List<PageDraw> TransparentPageDraws = [];
@@ -469,6 +472,7 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
             record.ClearColor = drawData.ClearColor;
             record.Opacity = drawData.Opacity;
             record.Viewport = drawData.Viewport;
+            record.Region = PassRegion.Of(drawData, passCount > 1, passOutputUsed[passIndex], currentFboSize);
             record.PostProcessingState = drawData.PostProcessingState;
             record.OpaquePageDraws.Clear();
             record.TransparentPageDraws.Clear();
@@ -544,7 +548,7 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                 RecordKeepPassOutput(frame, passIndex, passImage);
 
             if (layered)
-                blend.Process(frame, currentFboSize, passImage, compositeImage!, record.Opacity);
+                blend.Process(frame, currentFboSize, passImage, compositeImage!, record.Opacity, record.Region);
             else
                 finalImage = passImage;
         }
@@ -743,7 +747,8 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                 ref var currentCommand = ref drawCommands[i];
 
                 // The clip is the draw's own, cut in the shader, so draws with different clips are still batched
-                var (clipMin, clipMax) = ClipBounds.Pack(currentCommand.Clip, passViewport, currentFboSize);
+                // (the draws of all the passes are gathered before any is rendered, so it is the pass's own viewport and not the one being rendered)
+                var (clipMin, clipMax) = ClipBounds.Pack(currentCommand.Clip, drawData.Viewport, currentFboSize);
 
                 switch (currentCommand.DrawType)
                 {
@@ -856,7 +861,9 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
         passViewport = record.Viewport;
 
         // A pass that is drawn in a part of the target is cleared to nothing outside the part, and to its colour inside it
-        if (passViewport.Enabled)
+        // (unless nothing reads the rest of the target, which is then left alone, see PassRegion)
+        var region = record.Region;
+        if (passViewport.Enabled && !region.Enabled)
             clearColor = default;
 
         // The multisampled targets only live for the duration of the pass, so their contents are never needed.
@@ -930,7 +937,13 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
         var renderingInfo = new VkRenderingInfo
         {
             sType = VkStructureType.StructureTypeRenderingInfo,
-            renderArea = new VkRect2D { extent = new VkExtent2D { width = (uint) size.X, height = (uint) size.Y } },
+            renderArea = region.Enabled
+                ? new VkRect2D
+                {
+                    offset = new VkOffset2D { x = region.X, y = size.Y - region.Bottom },
+                    extent = new VkExtent2D { width = (uint) region.Width, height = (uint) region.Height }
+                }
+                : new VkRect2D { extent = new VkExtent2D { width = (uint) size.X, height = (uint) size.Y } },
             layerCount = 1,
             colorAttachmentCount = 1,
             pColorAttachments = &colorAttachment,
@@ -946,11 +959,11 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
             width = part.Enabled ? part.Width : size.X, height = part.Enabled ? part.Height : size.Y,
             minDepth = 0, maxDepth = 1
         };
-        var scissor = new VkRect2D { extent = new VkExtent2D { width = (uint) size.X, height = (uint) size.Y } };
+        var scissor = renderingInfo.renderArea;
         Vk.CmdSetViewport(cmd, 0, 1, &viewport);
         Vk.CmdSetScissor(cmd, 0, 1, &scissor);
 
-        if (part.Enabled)
+        if (part.Enabled && !region.Enabled)
         {
             var inside = new ColorRgba(record.ClearColor.R * record.ClearColor.A, record.ClearColor.G * record.ClearColor.A, record.ClearColor.B * record.ClearColor.A, record.ClearColor.A);
             var clear = new VkClearAttachment { aspectMask = VkImageAspectFlagBits.ImageAspectColorBit, colorAttachment = 0 };

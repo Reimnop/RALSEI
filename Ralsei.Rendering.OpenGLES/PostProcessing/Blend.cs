@@ -2,6 +2,7 @@ using OpenTK.Graphics.OpenGLES2;
 using Ralsei.Core;
 using Ralsei.Mathematics;
 using Ralsei.Rendering.Common;
+using Ralsei.Rendering.Data;
 
 namespace Ralsei.Rendering.OpenGLES.PostProcessing;
 
@@ -39,7 +40,8 @@ internal class Blend : IDisposable
 
     /// <summary>Draws <paramref name="sourceTexture"/> over <paramref name="targetTexture"/>, both premultiplied.</summary>
     /// <param name="opacity">How much of the source shows: 1 for all of it.</param>
-    public void Process(Vector2i size, int sourceTexture, int targetTexture, float opacity = 1f)
+    /// <param name="region">The part of the images to do (see <see cref="PassRegion"/>); <c>default</c> for all of them.</param>
+    public void Process(Vector2i size, int sourceTexture, int targetTexture, float opacity = 1f, ClipRect region = default)
     {
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetTexture, 0);
@@ -57,9 +59,17 @@ internal class Blend : IDisposable
         GL.Enable(EnableCap.Blend);
         GL.BlendFunc(BlendingFactor.One, BlendingFactor.OneMinusSrcAlpha);
 
+        if (region.Enabled)
+        {
+            var (x, y, width, height) = PassRegion.ToImageRect(region, size);
+            GL.Enable(EnableCap.ScissorTest);
+            GL.Scissor(x, y, width, height);
+        }
+
         GL.BindVertexArray(vaoHandle);
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
 
+        GL.Disable(EnableCap.ScissorTest);
         GL.Disable(EnableCap.Blend);
     }
 

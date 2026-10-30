@@ -447,12 +447,13 @@ internal class Renderer : IRenderer, IDisposable
         for (var passIndex = 0; passIndex < passCount; passIndex++)
         {
             var passData = drawDataProvider.CreateDrawData(passIndex);
-            var passTexture = RenderPass(passData, renderSize, layered);
+            var region = PassRegion.Of(passData, layered, passOutputUsed[passIndex], currentFboSize);
+            var passTexture = RenderPass(passData, renderSize, layered, region);
             if (passOutputUsed[passIndex])
                 KeepPassOutput(passIndex, passTexture);
 
             if (layered)
-                blend.Process(currentFboSize, passTexture, compositeTextureHandle, passData.Opacity);
+                blend.Process(currentFboSize, passTexture, compositeTextureHandle, passData.Opacity, region);
             else
                 finalTexture = passTexture;
         }
@@ -551,7 +552,8 @@ internal class Renderer : IRenderer, IDisposable
     }
 
     /// <summary>Draws a pass and post-processes it. Returns the texture with the result (one of the post-processing textures).</summary>
-    private int RenderPass(in DrawData drawData, Vector2i renderSize, bool layered)
+    /// <param name="region">The part of the target that the pass works on, if only a part (see <see cref="PassRegion"/>); the rest is left as it is.</param>
+    private int RenderPass(in DrawData drawData, Vector2i renderSize, bool layered, ClipRect region)
     {
         opaqueDrawCommands.Clear();
         transparentDrawCommands.Clear();
@@ -601,7 +603,15 @@ internal class Renderer : IRenderer, IDisposable
         var clearColor = new ColorRgba(drawClearColor.R * drawClearColor.A, drawClearColor.G * drawClearColor.A, drawClearColor.B * drawClearColor.A, drawClearColor.A);
         var depth = 0.0f;
         GL.Disable(EnableCap.ScissorTest);
-        if (viewport.Enabled)
+        if (region.Enabled)
+        {
+            // Nothing reads what is outside the part, so only the part is cleared
+            ApplyClip(default);
+            GL.ClearNamedFramebufferf(fboHandle, OpenTK.Graphics.OpenGL.Buffer.Color, 0, in clearColor.R);
+            GL.ClearNamedFramebufferf(fboHandle, OpenTK.Graphics.OpenGL.Buffer.Depth, 0, in depth);
+            GL.Disable(EnableCap.ScissorTest);
+        }
+        else if (viewport.Enabled)
         {
             // What is outside the part is nothing, and the part is what it is cleared to
             var nothing = new ColorRgba(0f, 0f, 0f, 0f);
@@ -663,12 +673,13 @@ internal class Renderer : IRenderer, IDisposable
 
         GL.NamedFramebufferTexture(postProcessFboHandle, FramebufferAttachment.ColorAttachment0, postProcessTextureHandle1, 0);
 
+        var (blitX, blitY, blitWidth, blitHeight) = region.Enabled ? PassRegion.ToImageRect(region, currentFboSize) : (0, 0, renderSize.X, renderSize.Y);
         GL.BlitNamedFramebuffer(
             fboHandle, postProcessFboHandle,
-            0, 0,
-            renderSize.X, renderSize.Y,
-            0, 0,
-            renderSize.X, renderSize.Y,
+            blitX, blitY,
+            blitX + blitWidth, blitY + blitHeight,
+            blitX, blitY,
+            blitX + blitWidth, blitY + blitHeight,
             ClearBufferMask.ColorBufferBit,
             BlitFramebufferFilter.Nearest);
 

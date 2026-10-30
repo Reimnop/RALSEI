@@ -70,6 +70,16 @@ public struct GrainEffectState
 
 public struct PostProcessingState
 {
+    /// <summary>Whether any effect at all is on. If not, the image is left as it was drawn. (An effect that is on may still do nothing, so this errs on the side of true.)</summary>
+    public readonly bool HasEffects =>
+        HasFinalEffects ||
+        LegacyBloom.Intensity != 0f ||
+        UniversalBloom.Intensity != 0f ||
+        Glitch.Intensity != 0f ||
+        Glitch.Amount != 0f ||
+        Grain.Intensity != 0f ||
+        DepthOfField.Radius != 0f;
+
     /// <summary>Whether any of the effects done together at the very end is on (hue shift, lens distortion, chromatic aberration, vignette, gradient). If none, that pass only converts to the displayed colours.</summary>
     public readonly bool HasFinalEffects =>
         HueShift.Angle != 0f ||
