@@ -18,10 +18,15 @@ RALSEI_LOCATION(5) flat out int vShapeIndex;
 RALSEI_LOCATION(6) flat out RalseiTexture vTexture;
 RALSEI_LOCATION(7) flat out vec4 vFog;
 RALSEI_LOCATION(8) flat out int vTextureFlags;
+RALSEI_LOCATION(9) flat out uvec2 vClip;
 
 struct MultiDrawItem {
     int renderType;
     int drawId;
+    // The part of the target the draw shows in, in pixels from the corner the target's rows start at: left and top, then
+    // right and bottom, each pair as two 16-bit halves of one uint (x in the low half). Fragments outside it are not drawn.
+    uint clipMin;
+    uint clipMax;
 };
 
 struct MeshDrawItem {
@@ -94,6 +99,7 @@ void main() {
     vTexture = RALSEI_NO_TEXTURE;
     vFog = vec4(0.0);
     vTextureFlags = 0;
+    vClip = uvec2(item.clipMin, item.clipMax);
 
     if (item.renderType == 1) { // text path
         TextDrawItem text = textDrawItems[item.drawId];

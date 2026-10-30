@@ -47,7 +47,7 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
     }
 
     /// <summary>The draws of a pass that are drawn with the same textures bound: a range of its indirect commands.</summary>
-    private readonly record struct PageDraw(int[] Textures, int FirstCommand, int CommandCount, ClipRect Clip);
+    private readonly record struct PageDraw(int[] Textures, int FirstCommand, int CommandCount);
 
     // Must match the push constant block in Uber.vert
     [StructLayout(LayoutKind.Sequential)]
@@ -738,20 +738,12 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
             // Meshes drawn one after another with the same mesh share an indirect command, as its instances
             var lastMeshDrawId = currentMeshDrawId;
             int[] pageTextures = bindlessTextures ? [] : texturePager.TexturesOf(page).ToArray();
-            var runStart = firstIndirectCommand;
-            var runClip = default(ClipRect);
             for (var i = page.FirstCommand; i < pageEnd; i++)
             {
                 ref var currentCommand = ref drawCommands[i];
 
-                // A new clip starts a new run of draws (batches of one mesh never span a clip change)
-                if (currentCommand.Clip != runClip)
-                {
-                    if (multiDrawIndirectBuffer.Length > runStart)
-                        pageDraws.Add(new PageDraw(pageTextures, runStart, multiDrawIndirectBuffer.Length - runStart, runClip));
-                    runStart = multiDrawIndirectBuffer.Length;
-                    runClip = currentCommand.Clip;
-                }
+                // The clip is the draw's own, cut in the shader, so a change of it does not split the multi-draw (only the batch of one mesh)
+                var (clipMin, clipMax) = ClipBounds.Pack(currentCommand.Clip, passViewport, currentFboSize);
 
                 switch (currentCommand.DrawType)
                 {
@@ -790,6 +782,8 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                             {
                                 RenderType = 0,
                                 DrawId = lastMeshDrawId,
+                                ClipMin = clipMin,
+                                ClipMax = clipMax
                             });
 
                             multiDrawIndirectBuffer.Append(new DrawIndexedIndirectCommand
@@ -820,7 +814,9 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                         multiDrawItemsBuffer.Append(new GpuMultiDrawItem
                         {
                             RenderType = 1,
-                            DrawId = currentTextDrawId++
+                            DrawId = currentTextDrawId++,
+                            ClipMin = clipMin,
+                            ClipMax = clipMax
                         });
 
                         multiDrawTextItemsBuffer.Append(new GpuTextDrawItem
@@ -846,8 +842,8 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                 }
             }
 
-            if (multiDrawIndirectBuffer.Length > runStart)
-                pageDraws.Add(new PageDraw(pageTextures, runStart, multiDrawIndirectBuffer.Length - runStart, runClip));
+            if (multiDrawIndirectBuffer.Length > firstIndirectCommand)
+                pageDraws.Add(new PageDraw(pageTextures, firstIndirectCommand, multiDrawIndirectBuffer.Length - firstIndirectCommand));
         }
     }
 
@@ -1173,42 +1169,8 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                 Vk.CmdBindDescriptorSets(frame.Cmd, VkPipelineBindPoint.PipelineBindPointGraphics, uberPipelineLayout, 1, 1, &textureSet, 0, null);
             }
 
-            SetClip(frame.Cmd, page.Clip);
             DrawIndirect(frame, pipeline, page.FirstCommand, page.CommandCount);
         }
-
-        SetClip(frame.Cmd, default);
-    }
-
-    /// <summary>Cuts what is drawn next to <paramref name="clip"/>, or stops cutting if there is none.</summary>
-    private void SetClip(VkCommandBuffer cmd, ClipRect clip)
-    {
-        // The part of the target the pass is in: its clip is in pixels of that part, and nothing shows outside it
-        var size = currentFboSize;
-        var part = passViewport;
-        var originX = part.Enabled ? part.X : 0;
-        var originY = part.Enabled ? part.Y : 0;
-        var width = part.Enabled ? part.Width : size.X;
-        var height = part.Enabled ? part.Height : size.Y;
-        var left = 0;
-        var top = 0;
-        var right = width;
-        var bottom = height;
-        if (clip.Enabled)
-        {
-            left = Math.Clamp(clip.X, 0, width);
-            top = Math.Clamp(clip.Y, 0, height);
-            right = Math.Clamp(clip.Right, left, width);
-            bottom = Math.Clamp(clip.Bottom, top, height);
-        }
-
-        // The viewport is not flipped (see RenderScene), so the origin of the scissor is the bottom-left corner, as in OpenGL
-        var scissor = new VkRect2D
-        {
-            offset = new VkOffset2D { x = Math.Max(originX + left, 0), y = Math.Max(size.Y - (originY + bottom), 0) },
-            extent = new VkExtent2D { width = (uint) (right - left), height = (uint) (bottom - top) }
-        };
-        Vk.CmdSetScissor(cmd, 0, 1, &scissor);
     }
 
     /// <summary>What a draw item says of its texture: the index or the slot in its page, and the flags the shader reads.</summary>

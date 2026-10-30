@@ -61,7 +61,7 @@ internal class Renderer : IRenderer, IDisposable
     private readonly record struct TextureFields(int Texture0, int Texture1, int Flags);
 
     /// <summary>The indirect commands of one texture page, drawn together.</summary>
-    private readonly record struct PageDraw(int PageIndex, int FirstCommand, int CommandCount, ClipRect Clip);
+    private readonly record struct PageDraw(int PageIndex, int FirstCommand, int CommandCount);
     private const int MsaaSamples = 4;
     private const int MaxOverlays = 10;
 
@@ -705,20 +705,12 @@ internal class Renderer : IRenderer, IDisposable
 
             // Meshes drawn one after another with the same mesh share an indirect command, as its instances
             var lastMeshDrawId = currentMeshDrawId;
-            var runStart = firstIndirectCommand;
-            var runClip = default(ClipRect);
             for (var i = page.FirstCommand; i < pageEnd; i++)
             {
                 ref var currentCommand = ref drawCommands[i];
 
-                // A new clip starts a new run of draws (batches of one mesh never span a clip change)
-                if (currentCommand.Clip != runClip)
-                {
-                    if (multiDrawIndirectBuffer.Length > runStart)
-                        pageDraws.Add(new PageDraw(pageIndex, runStart, multiDrawIndirectBuffer.Length - runStart, runClip));
-                    runStart = multiDrawIndirectBuffer.Length;
-                    runClip = currentCommand.Clip;
-                }
+                // The clip is the draw's own, cut in the shader, so a change of it does not split the multi-draw (only the batch of one mesh)
+                var (clipMin, clipMax) = ClipBounds.Pack(currentCommand.Clip, passViewport, currentFboSize);
 
                 switch (currentCommand.DrawType)
                 {
@@ -757,6 +749,8 @@ internal class Renderer : IRenderer, IDisposable
                             {
                                 RenderType = 0,
                                 DrawId = lastMeshDrawId,
+                                ClipMin = clipMin,
+                                ClipMax = clipMax
                             });
 
                             multiDrawIndirectBuffer.Append(new DrawElementsIndirectCommand
@@ -787,7 +781,9 @@ internal class Renderer : IRenderer, IDisposable
                         multiDrawItemsBuffer.Append(new GpuMultiDrawItem
                         {
                             RenderType = 1,
-                            DrawId = currentTextDrawId++
+                            DrawId = currentTextDrawId++,
+                            ClipMin = clipMin,
+                            ClipMax = clipMax
                         });
 
                         multiDrawTextItemsBuffer.Append(new GpuTextDrawItem
@@ -813,8 +809,8 @@ internal class Renderer : IRenderer, IDisposable
                 }
             }
 
-            if (multiDrawIndirectBuffer.Length > runStart)
-                pageDraws.Add(new PageDraw(pageIndex, runStart, multiDrawIndirectBuffer.Length - runStart, runClip));
+            if (multiDrawIndirectBuffer.Length > firstIndirectCommand)
+                pageDraws.Add(new PageDraw(pageIndex, firstIndirectCommand, multiDrawIndirectBuffer.Length - firstIndirectCommand));
         }
 
         var multiDrawIndirectBufferData = multiDrawIndirectBuffer.DataAsBytes;
@@ -866,11 +862,9 @@ internal class Renderer : IRenderer, IDisposable
                 GL.NamedBufferSubData(multiDrawTextItemsBufferHandle, IntPtr.Zero, multiDrawTextItemsBufferData.Length, multiDrawTextItemsBufferData);
         }
 
-        // Draw, a page at a time (or a run of one, when the clip changes)
-        foreach (var (pageIndex, firstCommand, commandCount, clip) in pageDraws)
+        // Draw, a page at a time
+        foreach (var (pageIndex, firstCommand, commandCount) in pageDraws)
         {
-            ApplyClip(clip);
-
             if (!bindlessTextures)
             {
                 var textures = texturePager.TexturesOf(texturePager.Pages[pageIndex]);
@@ -887,8 +881,6 @@ internal class Renderer : IRenderer, IDisposable
                 commandCount,
                 0);
         }
-
-        GL.Disable(EnableCap.ScissorTest);
     }
 
     /// <summary>Cuts what is drawn next to <paramref name="clip"/>, or stops cutting if there is none.</summary>

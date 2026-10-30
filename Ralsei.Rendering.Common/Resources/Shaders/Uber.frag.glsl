@@ -17,6 +17,7 @@ RALSEI_LOCATION(5) flat in int vShapeIndex;
 RALSEI_LOCATION(6) flat in RalseiTexture vTexture;
 RALSEI_LOCATION(7) flat in vec4 vFog;
 RALSEI_LOCATION(8) flat in int vTextureFlags;
+RALSEI_LOCATION(9) flat in uvec2 vClip;
 
 RALSEI_STORAGE_BUFFER(4) CurveBuffer { QuadraticCurve curves[]; };
 RALSEI_STORAGE_BUFFER(5) CurveIndexBuffer { int curveIndices[]; };
@@ -30,6 +31,11 @@ RALSEI_STORAGE_BUFFER(7) ShapeEntryBuffer { ShapeEntry shapeEntries[]; };
 #include "Common/GlyphCoverage.glsl"
 
 void main() {
+    // The clip of the draw (draws with different clips are one multi-draw, so it is not the scissor's)
+    uvec2 pixel = uvec2(gl_FragCoord.xy);
+    if (pixel.x < (vClip.x & 0xFFFFu) || pixel.y < (vClip.x >> 16) || pixel.x >= (vClip.y & 0xFFFFu) || pixel.y >= (vClip.y >> 16))
+        discard;
+
     if (vRenderType == 1) {
         // Text path: glyph (vShapeIndex >= 0) or mark rectangle (-1)
         if (vShapeIndex >= 0) {
