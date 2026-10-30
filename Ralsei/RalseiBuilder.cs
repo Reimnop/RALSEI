@@ -9,7 +9,7 @@ public class RalseiBuilder
     
     private readonly ResourceSourceFactories resourceSourceFactories;
 
-    internal RalseiBuilder(IServiceCollection services, ResourceSourceFactories resourceSourceFactories)
+    public RalseiBuilder(IServiceCollection services, ResourceSourceFactories resourceSourceFactories)
     {
         Services = services;
         this.resourceSourceFactories = resourceSourceFactories;

@@ -3,11 +3,7 @@ using Ralsei.Core.Data;
 
 namespace Ralsei.Core.Text;
 
-/// <summary>
-/// One placed glyph (or mark rectangle when <see cref="ShapeEntryIndex"/> == -1) produced by the shaper.
-/// <see cref="ShapeEntryIndex"/> is already in global buffer space — FontService remaps per-font-local
-/// indices to global ones during shaping so the renderer never needs to know about fonts at all.
-/// </summary>
+/// <summary>One placed glyph (or a mark rectangle when <see cref="ShapeEntryIndex"/> is -1) from the shaper. FontService remaps local indices to global buffer space during shaping, so the renderer never needs to know about fonts.</summary>
 public struct ShapedTextGlyph(Matrix3x2 transform, ColorRgba color, int shapeEntryIndex)
 {
     public Matrix3x2 Transform = transform;

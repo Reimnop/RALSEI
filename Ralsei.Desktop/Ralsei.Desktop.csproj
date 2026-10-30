@@ -1,40 +1,31 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    
-    <PublishAot>true</PublishAot>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <UseSystemResourceKeys>true</UseSystemResourceKeys>
-    <StripSymbols>true</StripSymbols>
-
-    <ApplicationIcon>icon.ico</ApplicationIcon>
+    <LangVersion>14</LangVersion>
+    <RootNamespace>Ralsei.Desktop</RootNamespace>
   </PropertyGroup>
-  
+
   <ItemGroup>
-    <PackageReference Include="DotMake.CommandLine" Version="3.1.0" />
     <PackageReference Include="Ico.Reader" Version="1.0.3" />
     <PackageReference Include="ManagedBass" Version="3.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
     <PackageReference Include="OpenTK.Windowing.GraphicsLibraryFramework" Version="5.0.0-pre.11" />
     <PackageReference Include="Ralsei.Redist" Version="1.0.0" />
-    <PackageReference Include="PublishAotCompressed" Version="1.0.5" />
     <PackageReference Include="ReFuel.StbImage" Version="2.0.1" />
   </ItemGroup>
-  
+
   <ItemGroup>
-    <ProjectReference Include="../Ralsei.Resources.Compressed/Ralsei.Resources.Compressed.csproj" />
     <ProjectReference Include="../Ralsei/Ralsei.csproj" />
+    <ProjectReference Include="../Ralsei.Resources.Compressed/Ralsei.Resources.Compressed.csproj" />
     <ProjectReference Include="../Ralsei.Rendering.OpenGL/Ralsei.Rendering.OpenGL.csproj" />
     <ProjectReference Include="../Ralsei.Rendering.OpenGLES/Ralsei.Rendering.OpenGLES.csproj" />
     <ProjectReference Include="../Ralsei.Rendering.Vulkan/Ralsei.Rendering.Vulkan.csproj" />
   </ItemGroup>
-  
+
   <ItemGroup>
     <EmbeddedResource Include="icon.ico" />
   </ItemGroup>

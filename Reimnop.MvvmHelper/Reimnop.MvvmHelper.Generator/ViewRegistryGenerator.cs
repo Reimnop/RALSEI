@@ -11,7 +11,6 @@ public sealed class ViewRegistryGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // find all class declarations with the attribute
         var classesProvider = context.SyntaxProvider
             .ForAttributeWithMetadataName(
                 "Reimnop.MvvmHelper.ViewModelViewAttribute`1",
@@ -22,7 +21,6 @@ public sealed class ViewRegistryGenerator : IIncrementalGenerator
         var compilationProvider = context.CompilationProvider;
         var combinedProvider = compilationProvider.Combine(classesProvider);
 
-        // register source output
         context.RegisterSourceOutput(combinedProvider, static (spc, tuple) =>
         {
             var (compilation, classes) = tuple;
@@ -105,7 +103,6 @@ public sealed class ViewRegistryGenerator : IIncrementalGenerator
         sb.AppendLine("internal class ViewRegistry : global::Reimnop.MvvmHelper.AbstractGeneratedViewRegistry");
         sb.AppendLine("{");
 
-        // factory function fields
         foreach (var classInfo in classes.OfType<ClassInfo>())
         {
             sb.AppendLine($"    private static readonly Func<global::Avalonia.Controls.Control> {classInfo.ViewModelFullName.Replace('.', '_')}_Factory = () => new global::{classInfo.ViewFullName}();");
@@ -113,7 +110,6 @@ public sealed class ViewRegistryGenerator : IIncrementalGenerator
 
         sb.AppendLine();
 
-        // view model type -> factory map
         sb.AppendLine("    protected override Dictionary<Type, Func<global::Avalonia.Controls.Control>> ViewFactories { get; } = new()");
         sb.AppendLine("    {");
         foreach (var classInfo in classes.OfType<ClassInfo>())

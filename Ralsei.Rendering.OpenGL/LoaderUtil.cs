@@ -5,7 +5,7 @@ using Ralsei.ShaderProcessor;
 
 namespace Ralsei.Rendering.OpenGL;
 
-public static class LoaderUtil
+internal static class LoaderUtil
 {
     public static int LoadShaderProgram(ResourceLoader loader, string vertexShaderName, string fragmentShaderName, params KeyValuePair<string, string?>[] defines)
     {

@@ -55,7 +55,6 @@ internal sealed class Grain : IDisposable
         noiseAddKernel = new ComputeKernel(context, shared, loader, "PostProcessing/Grain/NoiseAdd");
         compositeKernel = new ComputeKernel(context, shared, loader, "PostProcessing/Grain/Composite");
 
-        // Set up noise textures
         noiseTextureA = GpuImage.CreateGeneral(context, NoiseTextureSize, VkFormat.FormatR16Sfloat, GpuImage.ComputeUsage);
         noiseTextureB = GpuImage.CreateGeneral(context, NoiseTextureSize, VkFormat.FormatR16Sfloat, GpuImage.ComputeUsage);
         noiseTextureCombined = GpuImage.CreateGeneral(context, NoiseTextureSize, VkFormat.FormatR16g16b16a16Sfloat, GpuImage.ComputeUsage);
@@ -82,7 +81,6 @@ internal sealed class Grain : IDisposable
         if (intensity == 0f)
             return false;
 
-        // Get noise texture for this frame
         var noiseTexture = ComputeNoise(frame, time, colored);
 
         // Randomize noise offset each frame to reduce pattern repetition
@@ -136,16 +134,13 @@ internal sealed class Grain : IDisposable
 
     private GpuImage ComputeNoiseSingleChannel(FrameResources frame, float phase)
     {
-        // Generate noise in noiseTextureA
         noiseKernel.Run(frame, NoiseTextureSize, new NoisePushConstants { Phase = phase }, noiseTextureA);
 
-        // Filter noise into noiseTextureB
         filterKernel.Run(
             frame, NoiseTextureSize,
             new FilterPushConstants { Params = new Vector2(2f, -12f) },
             noiseTextureB, noiseTextureA, shared.NearestRepeat);
 
-        // Filter noise again into noiseTextureA
         filterKernel.Run(
             frame, NoiseTextureSize,
             new FilterPushConstants { Params = new Vector2(2f, 4f) },

@@ -2,11 +2,7 @@ using OpenTK.Graphics.Vulkan;
 
 namespace Ralsei.Rendering.Vulkan;
 
-/// <summary>
-/// Bump allocator over host-visible buffers that holds data on its way to device-local resources.
-/// Everything allocated is only valid until the next <see cref="Reset"/>, which happens once the GPU
-/// is done with the frame that owns the arena.
-/// </summary>
+/// <summary>Bump allocator over host-visible buffers holding data on its way to device-local resources. Allocations are valid until the next <see cref="Reset"/>, once the GPU is done with the frame that owns the arena.</summary>
 internal sealed unsafe class StagingArena(VulkanContext context) : IDisposable
 {
     private const ulong MinChunkSize = 4 * 1024 * 1024;
@@ -40,7 +36,6 @@ internal sealed unsafe class StagingArena(VulkanContext context) : IDisposable
                 return new Allocation(chunk.Buffer, offset, chunk.Mapped + offset);
             }
 
-            // This chunk is full, move on to the next one
             currentChunk++;
             currentOffset = 0;
         }

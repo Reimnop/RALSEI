@@ -6,9 +6,7 @@ namespace Ralsei.Rendering.Vulkan;
 
 internal static unsafe class VulkanLoader
 {
-    /// <summary>
-    /// Loads the Vulkan library and the function that all the others are looked up with.
-    /// </summary>
+    /// <summary>Loads the Vulkan library and the function all the others are looked up with.</summary>
     public static void Init()
     {
         // OpenTK finds the library by operating system, and does not know that Android has one as well

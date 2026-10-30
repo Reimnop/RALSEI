@@ -1,6 +1,5 @@
 using OpenTK.Graphics.OpenGLES2;
 using System.Numerics;
-using Pamx.Events;
 using Ralsei.Core;
 using Ralsei.Core.Data;
 using Ralsei.Mathematics;
@@ -9,7 +8,7 @@ using Ralsei.Rendering.Data;
 
 namespace Ralsei.Rendering.OpenGLES.PostProcessing;
 
-public class UberPost : IDisposable
+internal class UberPost : IDisposable
 {
     private readonly int program;
     
@@ -63,10 +62,8 @@ public class UberPost : IDisposable
         gradientRotationUniformLocation = GL.GetUniformLocation(program, "uGradientRotation");
         gradientModeUniformLocation = GL.GetUniformLocation(program, "uGradientMode");
         
-        // Initialize framebuffer
         framebuffer = GL.GenFramebuffer();
         
-        // Initialize a simple VAO
         vaoHandle = GL.GenVertexArray();
     }
     
@@ -83,12 +80,10 @@ public class UberPost : IDisposable
         vignetteColor = ColorUtil.SrgbToLinear(vignetteColor);
         // gradient is done in gamma, so don't convert
         
-        // Attach output texture to framebuffer
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, outputTexture, 0);
         GL.Viewport(0, 0, size.X, size.Y);
         
-        // Do our processing
         GL.UseProgram(program);
         
         GL.ActiveTexture(TextureUnit.Texture0);

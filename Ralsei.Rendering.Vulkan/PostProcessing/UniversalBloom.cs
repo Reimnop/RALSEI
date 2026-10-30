@@ -77,7 +77,6 @@ internal sealed class UniversalBloom : IDisposable
         if (intensity == 0.0f)
             return false;
 
-        // Update mip chain if size has changed
         if (size != currentSize)
         {
             currentSize = size;
@@ -90,10 +89,8 @@ internal sealed class UniversalBloom : IDisposable
         if (mipChain.Count < 2)
             return false;
 
-        // Get mip 0
         var mip0 = mipChain[0];
 
-        // Prefilter to mip 0
         var threshold = ColorUtil.SrgbToLinear(0.9f); // TODO: expose as parameter
         var knee = 0.5f;
         prefilter.Run(
@@ -101,29 +98,24 @@ internal sealed class UniversalBloom : IDisposable
             new PrefilterPushConstants { Threshold = threshold, Knee = threshold * knee },
             mip0.Down, input, shared.LinearClamp);
 
-        // Downsample and blur down the chain
         for (var i = 1; i < mipChain.Count; i++)
         {
             var sourceMip = mipChain[i - 1];
             var targetMip = mipChain[i];
 
-            // Downsample pass (mip[i - 1] -> mip[i])
 
-            // Horizontal blur
             // Use up mip as our target to save memory
             blur.Run(
                 frame, targetMip.Size,
                 new BlurPushConstants { IsVertical = 0 },
                 targetMip.Up, sourceMip.Down, shared.LinearClamp);
 
-            // Vertical blur
             blur.Run(
                 frame, targetMip.Size,
                 new BlurPushConstants { IsVertical = 1 },
                 targetMip.Down, targetMip.Up, shared.LinearClamp);
         }
 
-        // Upsample back up the chain
         var scatter = MathUtil.MapRange(diffusion, 0.0f, 1.0f, 0.05f, 0.95f);
         for (var i = mipChain.Count - 2; i >= 0; i--)
         {
@@ -131,14 +123,12 @@ internal sealed class UniversalBloom : IDisposable
             var highMip = mipChain[i].Down;
             var targetMip = mipChain[i]; // Up direction
 
-            // Upsample pass (mip[i + 1] -> mip[i])
             upsample.Run(
                 frame, targetMip.Size,
                 new UpsamplePushConstants { Scatter = scatter },
                 targetMip.Up, lowMip, shared.LinearClamp, highMip, shared.LinearClamp);
         }
 
-        // Combine result with input
         var colorLinear = ColorUtil.SrgbToLinear(color);
         var colorLuminance = 0.2126f * colorLinear.R + 0.7152f * colorLinear.G + 0.0722f * colorLinear.B;
         colorLinear = colorLuminance > 0f ? colorLinear * (1f / colorLuminance) : new ColorRgb(1f, 1f, 1f);
@@ -163,7 +153,6 @@ internal sealed class UniversalBloom : IDisposable
 
         mipChain.Clear();
 
-        // Create new mip chain
         for (var i = 0; i < levels; i++)
         {
             var mipSize = new Vector2i(

@@ -4,11 +4,9 @@ using Ralsei.Core.Data;
 
 namespace Ralsei.Rendering.OpenGLES;
 
-/// <summary>
-/// One instance of a mesh draw, as the per-instance vertex attributes of Unlit.vert.glsl.
-/// </summary>
+/// <summary>One instance of a mesh draw, as the per-instance vertex attributes of Unlit.vert.glsl.</summary>
 [StructLayout(LayoutKind.Explicit, Size = 112)]
-public struct GpuUnlitDrawItem
+internal struct GpuUnlitDrawItem
 {
     /// <summary>The first two columns of the transform: M11, M12, M21, M22.</summary>
     [FieldOffset(0)] public Vector4 Mvp1;

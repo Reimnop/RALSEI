@@ -3,9 +3,7 @@ using Ralsei.ShaderProcessor;
 
 namespace Ralsei.Rendering.Common;
 
-/// <summary>
-/// Loads the GLSL of Resources/Shaders, which the rendering backends share, for one graphics API.
-/// </summary>
+/// <summary>Loads the GLSL of Resources/Shaders, shared by the backends, for one graphics API.</summary>
 /// <remarks>
 /// The shaders have no <c>#version</c>. The loader supplies it, and a <c>RALSEI_OPENGL</c>, <c>RALSEI_GLES</c> or
 /// <c>RALSEI_VULKAN</c> define that the shaders use to adapt to the API (see Common/Prelude.glsl).
@@ -36,9 +34,7 @@ public sealed class ShaderLoader
     public static ShaderLoader ForOpenGLES(ResourceLoader loader, params IEnumerable<KeyValuePair<string, string?>> defines) 
         => new(loader, "300 es", defines.Append(new KeyValuePair<string, string?>("RALSEI_GLES", null)));
 
-    /// <summary>
-    /// Loads and preprocesses a shader.
-    /// </summary>
+    /// <summary>Loads and preprocesses a shader.</summary>
     /// <param name="name">The shader's path in Resources/Shaders without ".glsl", e.g. "Uber.vert" or "PostProcessing/Glitch".</param>
     public GlslPreprocessorResult Load(string name)
     {
@@ -52,10 +48,7 @@ public sealed class ShaderLoader
         }
     }
 
-    /// <summary>
-    /// Says which file each source-string number in a compiler's error message stands for. They only appear in
-    /// debug builds, in the file:line of a message like "1:42: error" where 1 is the number.
-    /// </summary>
+    /// <summary>Says which file each source-string number in a compiler error message stands for (debug builds only: the n in "n:42: error").</summary>
     public static string DescribeSourceFiles(GlslPreprocessorResult result)
     {
         return "Source files: " + string.Join(", ", result.SourceFiles.Select((file, i) => $"{i + 1} = {file}"));

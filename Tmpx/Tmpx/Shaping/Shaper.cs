@@ -158,7 +158,6 @@ public class Shaper(IFontResolver resolver, FontFallbackChainRegistry fallbackCh
                 }
                 else if (g.MarkColor != null)
                 {
-                    // extend run
                     runEndX = g.Position.X + g.Glyph.AdvanceWidth * g.Size * g.Transform.ScaleX;
                     runMinY = MathF.Min(runMinY, g.Position.Y + g.Font.Metrics.Descender * g.Size);
                     runMaxY = MathF.Max(runMaxY, g.Position.Y + g.Font.Metrics.Ascender * g.Size);
@@ -211,7 +210,6 @@ public class Shaper(IFontResolver resolver, FontFallbackChainRegistry fallbackCh
 
             var smallCapsMultiplier = transform == TextTransform.SmallCaps && char.IsLower(c) ? 0.8f : 1f;
 
-            // Walk the fallback chain: use the first font in the chain that has a glyph for this character
             IFont? font = null;
             IGlyph? glyph = null;
             foreach (var candidate in fontChain)
@@ -285,8 +283,7 @@ public class Shaper(IFontResolver resolver, FontFallbackChainRegistry fallbackCh
                     stack.PushItalic();
                 return true;
             case "u":
-                // Underline is recognized but not rendered. Consume the tag silently so it doesn't
-                // get echoed back as raw text by the fallback path in Shape().
+                // Underline is recognized but not rendered; consumed so the fallback path in Shape() doesn't echo it as text.
                 return true;
             case "color":
                 if (tag.IsClosing)
@@ -349,7 +346,7 @@ public class Shaper(IFontResolver resolver, FontFallbackChainRegistry fallbackCh
                 stack.PushFontName(tag.Value);
                 return true;
             case "material":
-                // boo boo bad material tag, consume, ignore
+                // bad material tag: consume and ignore
                 return true;
             case "align":
                 if (tag.IsClosing)
@@ -661,7 +658,6 @@ public class Shaper(IFontResolver resolver, FontFallbackChainRegistry fallbackCh
         if (string.IsNullOrWhiteSpace(str))
             return false;
     
-        // find end of numeric part: optional sign, then digits/dot
         var i = 0;
         if (i < str.Length && (str[i] == '+' || str[i] == '-')) i++;
         while (i < str.Length && (char.IsDigit(str[i]) || str[i] == '.')) i++;
@@ -697,8 +693,7 @@ public class Shaper(IFontResolver resolver, FontFallbackChainRegistry fallbackCh
             return true;
         } // px or "pt" or...
     
-        // unrecognized suffix
-        // still return the number with default unit, TMP ignores garbage
+        // unrecognized suffix: keep the number with the default unit, as TMP ignores garbage
         unit = Unit.None;
         return true;
     }

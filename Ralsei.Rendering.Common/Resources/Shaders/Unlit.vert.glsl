@@ -32,7 +32,7 @@ void main() {
 
     if (renderMode != 0) {
         // A gradient runs over the mesh's own coordinates, turned and stretched as the object asks.
-        vUv = gradientUv(aUv, aMvp2.w, aGradientScale);
+        vUv = gradientUv(aPos, aMvp2.w, aGradientScale);
     } else {
         vUv = mix(aUvRect.xy, aUvRect.zw, aUv);
     }

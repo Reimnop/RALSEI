@@ -5,7 +5,7 @@ using Ralsei.Util;
 
 namespace Ralsei.Rendering.OpenGLES.PostProcessing;
 
-public class Grain : IDisposable
+internal class Grain : IDisposable
 {
     private const int NoiseTextureWidth = 128;
     private const int NoiseTextureHeight = 128;
@@ -29,13 +29,11 @@ public class Grain : IDisposable
     
     public Grain(ResourceLoader loader, int vertexShader)
     {
-        // Load programs
         noiseProgram = LoaderUtil.LoadPostProcessingProgram(loader, "Grain/Noise", vertexShader);
         filterProgram = LoaderUtil.LoadPostProcessingProgram(loader, "Grain/Filter", vertexShader);
         noiseAddProgram = LoaderUtil.LoadPostProcessingProgram(loader, "Grain/NoiseAdd", vertexShader);
         compositeProgram = LoaderUtil.LoadPostProcessingProgram(loader, "Grain/Composite", vertexShader);
         
-        // Get uniform locations
         noisePhaseUniformLocation = GL.GetUniformLocation(noiseProgram, "uPhase");
         filterParamsUniformLocation = GL.GetUniformLocation(filterProgram, "uParams");
         noiseAddChannelUniformLocation = GL.GetUniformLocation(noiseAddProgram, "uChannel");
@@ -45,7 +43,6 @@ public class Grain : IDisposable
         compositeScaleUniformLocation = GL.GetUniformLocation(compositeProgram, "uScale");
         compositeOffsetUniformLocation = GL.GetUniformLocation(compositeProgram, "uOffset");
         
-        // Set binding locations
         var filterSourceSamplerUniformLocation = GL.GetUniformLocation(filterProgram, "uSourceSampler");
         GL.UseProgram(filterProgram);
         GL.Uniform1i(filterSourceSamplerUniformLocation, 0);
@@ -60,7 +57,6 @@ public class Grain : IDisposable
         GL.UseProgram(noiseAddProgram);
         GL.Uniform1i(noiseAddSourceSamplerUniformLocation, 0);
         
-        // Set up noise textures
         noiseTextureA = GL.GenTexture();
         GL.BindTexture(TextureTarget.Texture2d, noiseTextureA);
         GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.R16f, NoiseTextureWidth, NoiseTextureHeight);
@@ -73,7 +69,6 @@ public class Grain : IDisposable
         GL.BindTexture(TextureTarget.Texture2d, noiseTextureCombined);
         GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgb16f, NoiseTextureWidth, NoiseTextureHeight);
         
-        // Set up samplers
         noiseSampler = GL.GenSampler();
         GL.SamplerParameteri(noiseSampler, SamplerParameterI.TextureMinFilter, (int)TextureMinFilter.Nearest);
         GL.SamplerParameteri(noiseSampler, SamplerParameterI.TextureMagFilter, (int)TextureMagFilter.Nearest);
@@ -92,7 +87,6 @@ public class Grain : IDisposable
         GL.SamplerParameteri(noiseSamplerLinearRepeat, SamplerParameterI.TextureWrapS, (int)TextureWrapMode.Repeat);
         GL.SamplerParameteri(noiseSamplerLinearRepeat, SamplerParameterI.TextureWrapT, (int)TextureWrapMode.Repeat);
         
-        // Set up VAO and FBO
         vao = GL.GenVertexArray();
         fbo = GL.GenFramebuffer();
     }
@@ -128,28 +122,22 @@ public class Grain : IDisposable
         GL.BindVertexArray(vao);
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, fbo);
         
-        // Get noise texture for this frame
         GL.BindSampler(0, noiseSampler);
         var noiseTexture = ComputeNoise(time, colored);
         
-        // Set viewport
         GL.Viewport(0, 0, size.X, size.Y);
         
-        // Bind output image
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, outputTexture, 0);
         
-        // Bind samplers
         GL.BindSampler(0, linearSampler);
         GL.BindSampler(1, noiseSamplerLinearRepeat);
         
-        // Bind input textures
         GL.ActiveTexture(TextureUnit.Texture0);
         GL.BindTexture(TextureTarget.Texture2d, inputTexture);
         
         GL.ActiveTexture(TextureUnit.Texture1);
         GL.BindTexture(TextureTarget.Texture2d, noiseTexture);
         
-        // Set uniforms
         GL.UseProgram(compositeProgram);
         GL.Uniform1i(compositeColoredUniformLocation, colored ? 1 : 0);
         GL.Uniform1f(compositeLuminanceContributionUniformLocation, luminanceContribution);
@@ -163,7 +151,6 @@ public class Grain : IDisposable
         var rndY = NumberUtil.UlongToFloat01(NumberUtil.Mix(NumberUtil.ComputeHash(time), 1));
         GL.Uniform2f(compositeOffsetUniformLocation, rndX, rndY);
         
-        // Draw full-screen triangle
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         
         return true;
@@ -177,7 +164,6 @@ public class Grain : IDisposable
         if (!colored)
             return ComputeNoiseSingleChannel(phase);
         
-        // Clear combined texture
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, noiseTextureCombined, 0);
         GL.ClearColor(0f, 0f, 0f, 1f);
         GL.Clear(ClearBufferMask.ColorBufferBit);
@@ -209,12 +195,10 @@ public class Grain : IDisposable
     
     private void ComputeCombinedNoiseTexture(int texture, int target, int channel)
     {
-        // Bind target
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, target, 0);
         
         GL.UseProgram(noiseAddProgram);
         
-        // Bind input texture
         GL.ActiveTexture(TextureUnit.Texture0);
         GL.BindTexture(TextureTarget.Texture2d, texture);
 
@@ -225,7 +209,6 @@ public class Grain : IDisposable
     
     private int ComputeNoiseSingleChannel(float phase)
     {
-        // Generate noise in noiseTextureA
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, noiseTextureA, 0);
         
         GL.UseProgram(noiseProgram);
@@ -233,12 +216,10 @@ public class Grain : IDisposable
         
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         
-        // Filter noise into noiseTextureB
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, noiseTextureB, 0);
         
         GL.UseProgram(filterProgram);
         
-        // Bind input texture
         GL.ActiveTexture(TextureUnit.Texture0);
         GL.BindTexture(TextureTarget.Texture2d, noiseTextureA);
         
@@ -246,10 +227,8 @@ public class Grain : IDisposable
         
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         
-        // Filter noise again into noiseTextureA
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, noiseTextureA, 0);
         
-        // Bind input texture
         GL.BindTexture(TextureTarget.Texture2d, noiseTextureB);
         GL.Uniform2f(filterParamsUniformLocation, 2f, 4f);
         

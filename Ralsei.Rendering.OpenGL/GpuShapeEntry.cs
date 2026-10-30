@@ -5,7 +5,7 @@ using Tmpx.Common;
 namespace Ralsei.Rendering.OpenGL;
 
 [StructLayout(LayoutKind.Sequential, Size = 56)] // std430 aligns to largest member
-public struct GpuShapeEntry
+internal struct GpuShapeEntry
 {
     // -- 0 - 32 (32 bytes) --
     public int HorizontalBandEntryBaseIndex;

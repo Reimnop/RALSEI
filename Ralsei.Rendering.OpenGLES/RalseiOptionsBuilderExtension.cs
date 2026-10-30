@@ -11,7 +11,10 @@ public static class RalseiOptionsBuilderExtension
     {
         var services = builder.Services;
         
-        services.AddSingleton<IRenderingFactory, RenderingFactory>();
+        // One factory, found by class (renderers) or interface (apps). It holds no graphics resources, so a host can share it between windows; the frame queue is per window.
+        services.AddSingleton<RenderingFactory>();
+        services.AddSingleton<IRenderingFactory>(x => x.GetRequiredService<RenderingFactory>());
+        services.AddSingleton<IFrameQueue, FrameQueue>();
         services.AddScoped<IRenderer, Renderer>();
 
         services.AddSingleton(new OpenGLSettings

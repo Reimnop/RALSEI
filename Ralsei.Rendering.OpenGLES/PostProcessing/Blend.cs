@@ -5,13 +5,12 @@ using Ralsei.Rendering.Common;
 
 namespace Ralsei.Rendering.OpenGLES.PostProcessing;
 
-/// <summary>
-/// Lays one image over another, which is how the passes of a frame are layered.
-/// </summary>
-public class Blend : IDisposable
+/// <summary>Lays one image over another, which is how the passes of a frame are layered.</summary>
+internal class Blend : IDisposable
 {
     private readonly int program;
     private readonly int outputSizeUniformLocation;
+    private readonly int opacityUniformLocation;
     private readonly int framebuffer;
     private readonly int vaoHandle;
 
@@ -19,14 +18,13 @@ public class Blend : IDisposable
     {
         program = LoaderUtil.LoadPostProcessingProgram(loader, "Blend", vertexShader);
         outputSizeUniformLocation = GL.GetUniformLocation(program, "uOutputSize");
+        opacityUniformLocation = GL.GetUniformLocation(program, "uOpacity");
 
         framebuffer = GL.GenFramebuffer();
         vaoHandle = GL.GenVertexArray();
     }
 
-    /// <summary>
-    /// Makes <paramref name="targetTexture"/> empty: transparent.
-    /// </summary>
+    /// <summary>Makes <paramref name="targetTexture"/> empty: transparent.</summary>
     public void Clear(Vector2i size, int targetTexture)
     {
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
@@ -39,10 +37,9 @@ public class Blend : IDisposable
         GL.Clear(ClearBufferMask.ColorBufferBit);
     }
 
-    /// <summary>
-    /// Draws <paramref name="sourceTexture"/> over what <paramref name="targetTexture"/> has already, which are both premultiplied.
-    /// </summary>
-    public void Process(Vector2i size, int sourceTexture, int targetTexture)
+    /// <summary>Draws <paramref name="sourceTexture"/> over <paramref name="targetTexture"/>, both premultiplied.</summary>
+    /// <param name="opacity">How much of the source shows: 1 for all of it.</param>
+    public void Process(Vector2i size, int sourceTexture, int targetTexture, float opacity = 1f)
     {
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetTexture, 0);
@@ -50,6 +47,7 @@ public class Blend : IDisposable
 
         GL.UseProgram(program);
         GL.Uniform2i(outputSizeUniformLocation, size.X, size.Y);
+        GL.Uniform1f(opacityUniformLocation, opacity);
 
         GL.ActiveTexture(TextureUnit.Texture0);
         GL.BindTexture(TextureTarget.Texture2d, sourceTexture);

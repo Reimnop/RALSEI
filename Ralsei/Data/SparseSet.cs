@@ -41,18 +41,14 @@ public class SparseSet<T> : IReadOnlyCollection<KeyValuePair<int, T>>
         var lastIndex = items.Count - 1;
         if (index != lastIndex)
         {
-            // swap with last item
             (items[index], items[lastIndex]) = (items[lastIndex], items[index]);
             
-            // keep indexToId synced
             (indexToId[index], indexToId[lastIndex]) = (indexToId[lastIndex], indexToId[index]);
             
-            // update idToIndex for the swapped item
             idToIndex[indexToId[index]] = index;
             idToIndex[indexToId[lastIndex]] = lastIndex;
         }
         
-        // remove last item
         items.RemoveAt(lastIndex);
         return true;
     }

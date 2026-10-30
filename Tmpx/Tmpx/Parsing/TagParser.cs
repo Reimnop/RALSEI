@@ -11,11 +11,9 @@ public static class TagParser
         var isClosing = inner.StartsWith('/');
         if (isClosing) inner = inner[1..].TrimStart();
     
-        // split on whitespace, but respect quoted values
         var tokens = SplitTokens(inner);
         if (tokens.Count == 0) return new ParsedTag(isClosing, "", null, raw, []);
     
-        // first token is always the name, optionally with a value
         string? primaryValue = null;
         var eq = tokens[0].IndexOf('=');
         string name;
@@ -23,7 +21,6 @@ public static class TagParser
         {
             name = tokens[0];
             
-            // next token with no key is the primary value
             if (tokens.Count > 1 && !tokens[1].Contains('='))
                 primaryValue = tokens[1];
         }
@@ -32,7 +29,6 @@ public static class TagParser
             (name, primaryValue) = SplitOnFirst(tokens[0], '=');
         }
     
-        // remaining tokens are extra attributes
         var attrs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 1; i < tokens.Count; i++)
         {
@@ -43,7 +39,7 @@ public static class TagParser
         return new ParsedTag(isClosing, name, primaryValue, raw, attrs);
     }
 
-    // splits `font="Inconsolata" material="whatever the fuck"` respecting quotes
+    // splits `font="Inconsolata" material="Outline"` respecting quotes
     private static List<string> SplitTokens(string s)
     {
         var tokens = new List<string>();

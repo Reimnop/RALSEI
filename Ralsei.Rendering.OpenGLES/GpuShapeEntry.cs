@@ -5,7 +5,7 @@ using Tmpx.Common;
 namespace Ralsei.Rendering.OpenGLES;
 
 [StructLayout(LayoutKind.Sequential, Size = 64)]
-public struct GpuShapeEntry
+internal struct GpuShapeEntry
 {
     // -- 0 - 32 (32 bytes) --
     public int HorizontalBandEntryBaseIndex;

@@ -3,9 +3,7 @@ using Tmpx.Common;
 
 namespace Tmpx.Generator;
 
-/// <summary>
-/// Categorizes curves into horizontal and vertical bands
-/// </summary>
+/// <summary>Categorizes curves into horizontal and vertical bands.</summary>
 public static class BandAccelerator
 {
     public static void Process(
@@ -23,7 +21,6 @@ public static class BandAccelerator
         {
             var c = curves[i];
             
-            // curve's Y extent -> which horizontal bands does it touch?
             var yLo = MathF.Min(MathF.Min(c.P0.Y, c.P1.Y), c.P2.Y);
             var yHi = MathF.Max(MathF.Max(c.P0.Y, c.P1.Y), c.P2.Y);
             var bandYLo = Math.Clamp((int)((yLo - min.Y) / size.Y * bandCount), 0, bandCount - 1);
@@ -31,7 +28,6 @@ public static class BandAccelerator
             for (var b = bandYLo; b <= bandYHi; b++)
                 horizontalBands[b].Add(i);
             
-            // curve's X extent -> which vertical bands does it touch?
             var xLo = MathF.Min(MathF.Min(c.P0.X, c.P1.X), c.P2.X);
             var xHi = MathF.Max(MathF.Max(c.P0.X, c.P1.X), c.P2.X);
             var bandXLo = Math.Clamp((int)((xLo - min.X) / size.X * bandCount), 0, bandCount - 1);

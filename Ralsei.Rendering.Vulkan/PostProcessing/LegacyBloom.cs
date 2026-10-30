@@ -69,14 +69,12 @@ internal sealed class LegacyBloom : IDisposable
 
         intensity = MathF.Pow(2.0f, intensity / 10.0f) - 1.0f;
 
-        // Determine iteration count
         var s = MathF.Max(size.X, size.Y);
         var logS = MathF.Log2(s) + MathF.Min(diffusion, 10f) - 10f; // Use 10 as base
         var logSFloored = MathF.Floor(logS);
         var iterations = (int) Math.Clamp(logSFloored, 1, 16); // Limit to 16 levels
         var sampleScale = 0.5f + (logS - logSFloored);
 
-        // Update mip chain if size has changed
         if (size != currentSize || iterations != currentIterations)
         {
             currentSize = size;
@@ -87,10 +85,8 @@ internal sealed class LegacyBloom : IDisposable
         if (mipChain.Count < 2)
             return false;
 
-        // Get mip 0
         var mip0 = mipChain[0];
 
-        // Prefilter to mip 0
         var threshold = ColorUtil.SrgbToLinear(0.95f); // TODO: expose as parameter
         var knee = 0.5f;
         prefilter.Run(
@@ -98,30 +94,25 @@ internal sealed class LegacyBloom : IDisposable
             new PrefilterPushConstants { Threshold = threshold, Knee = threshold * knee },
             mip0, input, shared.LinearClamp);
 
-        // Downsample
         for (var i = 1; i < mipChain.Count; i++)
         {
             var sourceMip = mipChain[i - 1];
             var targetMip = mipChain[i];
 
-            // Downsample pass (mip[i - 1] -> mip[i])
             downsample.Run(frame, targetMip.Size, targetMip, sourceMip, shared.LinearClamp);
         }
 
-        // Upsample back up the chain
         for (var i = mipChain.Count - 2; i >= 0; i--)
         {
             var sourceMip = mipChain[i + 1];
             var targetMip = mipChain[i];
 
-            // Upsample pass (mip[i + 1] -> mip[i])
             upsample.Run(
                 frame, targetMip.Size,
                 new UpsamplePushConstants { SampleScale = sampleScale },
                 targetMip, sourceMip, shared.LinearClamp);
         }
 
-        // Combine result with input
         var colorLinear = ColorUtil.SrgbToLinear(color);
         var colorLuminance = 0.2126f * colorLinear.R + 0.7152f * colorLinear.G + 0.0722f * colorLinear.B;
         colorLinear = colorLuminance > 0f ? colorLinear * (1f / colorLuminance) : new ColorRgb(1f, 1f, 1f);
@@ -143,7 +134,6 @@ internal sealed class LegacyBloom : IDisposable
 
         mipChain.Clear();
 
-        // Create new mip chain
         for (var i = 0; i < levels; i++)
         {
             var mipSize = new Vector2i(

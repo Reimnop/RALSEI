@@ -4,30 +4,14 @@ using System.Text.RegularExpressions;
 
 namespace Ralsei.ShaderProcessor;
 
-/// <summary>
-/// A preprocessor for GLSL that adds what the language lacks: <c>#include</c>, macros defined by the host
-/// instead of the shader, and a <c>#version</c> chosen by the host instead of the shader.
-/// </summary>
+/// <summary>A preprocessor for GLSL that adds what the language lacks: <c>#include</c>, macros defined by the host, and a <c>#version</c> chosen by the host.</summary>
 /// <remarks>
-/// <para>
-/// Everything else is left to the GLSL compiler. <c>#define</c>, <c>#extension</c>, <c>#pragma</c> and the rest are
-/// copied to the output, and macros are never expanded in the output. The one exception is conditional compilation:
-/// <c>#if</c>, <c>#ifdef</c>, <c>#ifndef</c>, <c>#elif</c>, <c>#else</c> and <c>#endif</c> are evaluated here and the
-/// parts that are not taken are removed, because an <c>#include</c> in a part that is not taken must not be read.
-/// The macros a condition can see are the host's defines, the shader's own <c>#define</c>s and
-/// <c>GL_ES</c>/<c>__VERSION__</c>. Function-like macros and other macros the compiler provides can't be used in a
-/// condition.
-/// </para>
-/// <para>
-/// <c>#include "file"</c> looks next to the including file first, <c>#include &lt;file&gt;</c> only in
-/// <see cref="GlslPreprocessorOptions.IncludeDirectories"/>. <c>#pragma once</c> and ordinary include guards both work.
-/// </para>
+/// Everything else is left to the GLSL compiler: <c>#define</c>, <c>#extension</c>, <c>#pragma</c> etc. are copied and macros are never expanded in the output. The exception is conditional compilation (<c>#if</c>, <c>#ifdef</c>, <c>#ifndef</c>, <c>#elif</c>, <c>#else</c>, <c>#endif</c>), evaluated here with untaken parts removed, since an <c>#include</c> in an untaken part must not be read. A condition sees the host's defines, the shader's own <c>#define</c>s and <c>GL_ES</c>/<c>__VERSION__</c>; function-like macros and compiler-provided macros can't be used.
+/// <c>#include "file"</c> looks next to the including file first, <c>#include &lt;file&gt;</c> only in <see cref="GlslPreprocessorOptions.IncludeDirectories"/>. <c>#pragma once</c> and include guards both work.
 /// </remarks>
 public sealed partial class GlslPreprocessor(IShaderSourceProvider provider)
 {
-    /// <summary>
-    /// Preprocesses the shader at <paramref name="entryPath"/>.
-    /// </summary>
+    /// <summary>Preprocesses the shader at <paramref name="entryPath"/>.</summary>
     /// <exception cref="ShaderProcessingException">The shader can't be preprocessed.</exception>
     public GlslPreprocessorResult Process(string entryPath, GlslPreprocessorOptions? options = null)
     {
@@ -175,10 +159,7 @@ public sealed partial class GlslPreprocessor(IShaderSourceProvider provider)
             }
         }
 
-        /// <summary>
-        /// Turns a path into a normalized virtual path. A relative path is resolved against
-        /// <paramref name="directory"/> (the root if null). Returns null if the path leaves the root.
-        /// </summary>
+        /// <summary>Turns a path into a normalized virtual path, resolving a relative one against <paramref name="directory"/> (the root if null). Null if it leaves the root.</summary>
         private static string? TryNormalizePath(string path, string? directory)
         {
             var segments = new List<string>();
@@ -235,9 +216,7 @@ public sealed partial class GlslPreprocessor(IShaderSourceProvider provider)
             return lines;
         }
 
-        /// <summary>
-        /// Removes comments from <paramref name="text"/> and tracks whether a block comment is still open at its end.
-        /// </summary>
+        /// <summary>Removes comments from <paramref name="text"/> and tracks whether a block comment is open at its end.</summary>
         private static string StripComments(string text, ref bool inBlockComment)
         {
             if (!inBlockComment && !text.Contains('/'))

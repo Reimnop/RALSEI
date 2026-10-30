@@ -1,5 +1,4 @@
 using System.Numerics;
-using Pamx.Events;
 using Ralsei.Core.Data;
 
 namespace Ralsei.Rendering.Data;
@@ -57,10 +56,7 @@ public struct GlitchEffectState
 
 public struct DepthOfFieldEffectState
 {
-    /// <summary>
-    /// How far the image is blurred, as a fraction of its height: the radius of the disc that each point is spread over.
-    /// Zero for no blur.
-    /// </summary>
+    /// <summary>How far the image is blurred, as a fraction of its height (the radius of the disc each point spreads over). Zero for none.</summary>
     public float Radius;
 }
 
@@ -74,10 +70,7 @@ public struct GrainEffectState
 
 public struct PostProcessingState
 {
-    /// <summary>
-    /// Whether any of the effects that are done together at the very end is on: the hue shift, lens distortion, chromatic
-    /// aberration, vignette and gradient. If none is, that pass only converts what is there to what is shown.
-    /// </summary>
+    /// <summary>Whether any of the effects done together at the very end is on (hue shift, lens distortion, chromatic aberration, vignette, gradient). If none, that pass only converts to the displayed colours.</summary>
     public readonly bool HasFinalEffects =>
         HueShift.Angle != 0f ||
         LensDistortion.Intensity != 0f ||

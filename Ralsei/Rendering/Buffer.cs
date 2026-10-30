@@ -8,11 +8,7 @@ public class Buffer<T>(int capacity = 1024): IReadOnlyBuffer<T> where T : unmana
     public ReadOnlySpan<T> Data => data.AsSpan(0, length);
     public ReadOnlySpan<byte> DataAsBytes => MemoryMarshal.AsBytes(Data);
 
-    /// <summary>
-    /// Returns a writable span into the buffer's currently-populated region. Useful for in-place
-    /// patches after an <see cref="Append(ReadOnlySpan{T})"/> — e.g. fixing up indices that were
-    /// stored in font-local form before being concatenated into a global buffer.
-    /// </summary>
+    /// <summary>A writable span of the populated region, for in-place patches after an <see cref="Append(ReadOnlySpan{T})"/>.</summary>
     public Span<T> AsWritableSpan(int start, int length)
         => data.AsSpan(start, length);
     
@@ -37,13 +33,10 @@ public class Buffer<T>(int capacity = 1024): IReadOnlyBuffer<T> where T : unmana
     {
         var start = length;
 
-        // Resize buffer if necessary
         EnsureSize(start + 1);
         
-        // Copy data
         this.data[start] = data;
 
-        // Update size
         length++;
     }
     
@@ -51,13 +44,10 @@ public class Buffer<T>(int capacity = 1024): IReadOnlyBuffer<T> where T : unmana
     {
         var start = length;
 
-        // Resize buffer if necessary
         EnsureSize(start + data.Length);
         
-        // Copy data
         data.CopyTo(this.data.AsSpan(start));
         
-        // Update size
         length += data.Length;
     }
     

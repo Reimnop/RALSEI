@@ -4,10 +4,8 @@ using Ralsei.Mathematics;
 
 namespace Ralsei.Rendering.OpenGL.PostProcessing;
 
-/// <summary>
-/// Blurs the image over a disc
-/// </summary>
-public class DepthOfField : IDisposable
+/// <summary>Blurs the image over a disc.</summary>
+internal class DepthOfField : IDisposable
 {
     // A blur of less than this is not seen
     private const float MinRadiusInPixels = 0.25f;

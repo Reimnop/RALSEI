@@ -4,7 +4,7 @@ namespace Ralsei.Rendering.OpenGL;
 
 // std430 layout
 [StructLayout(LayoutKind.Explicit, Size = 8)]
-public struct GpuMultiDrawItem
+internal struct GpuMultiDrawItem
 {
     [FieldOffset(0)] public int RenderType; // 0 = mesh, 1 = text
     [FieldOffset(4)] public int DrawId;

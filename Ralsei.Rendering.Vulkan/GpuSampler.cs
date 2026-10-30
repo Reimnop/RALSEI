@@ -65,9 +65,7 @@ internal sealed unsafe class GpuSampler : IDisposable
             _ => throw new ArgumentOutOfRangeException(nameof(wrapMode), wrapMode, null)
         };
 
-    /// <summary>
-    /// Vulkan only has three border colours, where OpenGL has any. This picks the closest one.
-    /// </summary>
+    /// <summary>Vulkan has three border colours where OpenGL has any; picks the closest.</summary>
     private static VkBorderColor GetBorderColor(ColorRgba color)
     {
         if (color.A < 0.5f)

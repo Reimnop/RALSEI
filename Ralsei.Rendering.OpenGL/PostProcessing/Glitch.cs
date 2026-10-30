@@ -8,7 +8,7 @@ using Ralsei.Util;
 namespace Ralsei.Rendering.OpenGL.PostProcessing;
 
 // based on limitless glitch 2
-public class Glitch : IDisposable
+internal class Glitch : IDisposable
 {
     private const int TextureBinding = 0;
     private const int NoiseTextureBinding = 1;
@@ -33,30 +33,25 @@ public class Glitch : IDisposable
     {
         program = LoaderUtil.LoadComputeProgram(loader, "PostProcessing/Glitch");
         
-        // Get uniform locations
         intensityUniformLocation = GL.GetUniformLocation(program, "uIntensity");
         colorIntensityUniformLocation = GL.GetUniformLocation(program, "uColorIntensity");
         
         var textureUniformLocation = GL.GetUniformLocation(program, "uTexture");
         var noiseTextureUniformLocation = GL.GetUniformLocation(program, "uNoiseTexture");
         
-        // Set sampler uniform binding
         GL.UseProgram(program);
         GL.Uniform1i(textureUniformLocation, TextureBinding);
         GL.Uniform1i(noiseTextureUniformLocation, NoiseTextureBinding);
         
-        // Create noise texture
         noiseTexture = GL.CreateTexture(TextureTarget.Texture2d);
         GL.TextureStorage2D(noiseTexture, 1, SizedInternalFormat.Rgb8, NoiseTextureWidth, NoiseTextureHeight);
         
-        // Create noise sampler
         noiseTextureSampler = GL.CreateSampler();
         GL.SamplerParameteri(noiseTextureSampler, SamplerParameterI.TextureMinFilter, (int)TextureMinFilter.Nearest);
         GL.SamplerParameteri(noiseTextureSampler, SamplerParameterI.TextureMagFilter, (int)TextureMagFilter.Nearest);
         GL.SamplerParameteri(noiseTextureSampler, SamplerParameterI.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
         GL.SamplerParameteri(noiseTextureSampler, SamplerParameterI.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
         
-        // Create main sampler
         sampler = GL.CreateSampler();
         GL.SamplerParameteri(sampler, SamplerParameterI.TextureMinFilter, (int)TextureMinFilter.Linear);
         GL.SamplerParameteri(sampler, SamplerParameterI.TextureMagFilter, (int)TextureMagFilter.Linear);
@@ -131,7 +126,6 @@ public class Glitch : IDisposable
             }
         }
         
-        // Upload data to GPU
         GL.PixelStorei(PixelStoreParameter.UnpackAlignment, 1);
         GL.TextureSubImage2D(noiseTexture, 0, 0, 0, NoiseTextureWidth, NoiseTextureHeight, PixelFormat.Rgb, PixelType.UnsignedByte, noiseBuffer);
     }

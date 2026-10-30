@@ -4,7 +4,7 @@ namespace Ralsei.Rendering.OpenGL;
 
 // https://registry.khronos.org/OpenGL-Refpages/gl4/html/glMultiDrawElementsIndirect.xhtml
 [StructLayout(LayoutKind.Sequential, Size = 20)]
-public struct DrawElementsIndirectCommand
+internal struct DrawElementsIndirectCommand
 {
     public required int Count;
     public required int InstanceCount;

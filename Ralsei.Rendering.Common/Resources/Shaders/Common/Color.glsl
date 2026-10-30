@@ -8,6 +8,7 @@ vec4 getColor(vec4 color1, vec4 color2, int mode, vec2 uv) {
     // mode 2: gradient 1 to 2 on x
     // mode 3: circular gradient outwards
     // mode 4: circular gradient inwards
+    // mode 5: a ring; color2 is (inner radius, outer radius, fade) as numbers, in fractions of the half-size
     if (mode == 0) {
         return color1;
     } else if (mode == 1) {
@@ -20,6 +21,12 @@ vec4 getColor(vec4 color1, vec4 color2, int mode, vec2 uv) {
     } else if (mode == 4) {
         float dist = min(distance(uv, vec2(0.5)) * 2.0, 1.0);
         return mix(color1, color2, dist);
+    } else if (mode == 5) {
+        float dist = distance(uv, vec2(0.5)) * 2.0;
+        float fade = max(color2.z, 0.0001);
+        float outside = smoothstep(color2.y, color2.y + fade, dist);
+        float inside = smoothstep(color2.x - fade, color2.x, dist);
+        return vec4(color1.rgb, color1.a * (inside - outside));
     }
     return color1;
 }

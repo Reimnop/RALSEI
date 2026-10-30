@@ -5,7 +5,7 @@ using Ralsei.Core.Data;
 namespace Ralsei.Rendering.Vulkan;
 
 [StructLayout(LayoutKind.Explicit, Size = 48)]
-public struct GpuTextDrawItem
+internal struct GpuTextDrawItem
 {
     [FieldOffset(0)] public Matrix3x2 Mvp;
     [FieldOffset(24)] public float Z;

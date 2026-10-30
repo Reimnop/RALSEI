@@ -1,6 +1,5 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
-using Pamx.Events;
 using Ralsei.Core;
 using Ralsei.Core.Data;
 using Ralsei.Mathematics;

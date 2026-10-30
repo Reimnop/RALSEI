@@ -74,16 +74,13 @@ public class GenerateCommand
 
     public void Run()
     {
-        // parse character ranges (each entry may itself be a comma-separated list)
         var characterRanges = CharacterRanges.SelectMany(CharacterRange.ParseList).ToList();
         
-        // load freetype
         var library = new Library();
         var face = new Face(library, InputPath);
 
         var unitsPerEm = (float)face.UnitsPerEM;
         
-        // extract glyphs
         var glyphPacker = new GlyphPacker();
         var glyphMap = new Dictionary<char, Glyph>();
 
@@ -160,7 +157,6 @@ public class GenerateCommand
                 Color.White);
         }
         
-        // write to file
         var font = new Font
         {
             FamilyName = FamilyName ?? face.FamilyName,

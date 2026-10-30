@@ -1,8 +1,6 @@
 namespace Ralsei.ShaderProcessor;
 
-/// <summary>
-/// Thrown when a shader cannot be preprocessed: a missing include, a malformed directive, an #error, etc.
-/// </summary>
+/// <summary>Thrown when a shader can't be preprocessed: a missing include, a malformed directive, an #error, etc.</summary>
 public class ShaderProcessingException : Exception
 {
     /// <summary>The file the problem is in, if it is in a specific one.</summary>

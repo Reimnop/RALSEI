@@ -4,7 +4,7 @@ namespace Ralsei.Rendering.Vulkan;
 
 // Same layout as VkDrawIndexedIndirectCommand
 [StructLayout(LayoutKind.Sequential, Size = 20)]
-public struct DrawIndexedIndirectCommand
+internal struct DrawIndexedIndirectCommand
 {
     public required int IndexCount;
     public required int InstanceCount;

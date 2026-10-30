@@ -3,9 +3,7 @@ using Avalonia.Controls.Templates;
 
 namespace Reimnop.MvvmHelper;
 
-/// <summary>
-/// Avalonia <see cref="IDataTemplate"/> that resolves Views from <see cref="IViewRegistry"/>.
-/// </summary>
+/// <summary>Avalonia <see cref="IDataTemplate"/> that resolves Views from <see cref="IViewRegistry"/>.</summary>
 public sealed class ViewLocator(IViewRegistry registry) : IViewLocator
 {
     /// <inheritdoc/>

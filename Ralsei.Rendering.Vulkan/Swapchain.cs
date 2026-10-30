@@ -3,10 +3,7 @@ using Ralsei.Mathematics;
 
 namespace Ralsei.Rendering.Vulkan;
 
-/// <summary>
-/// The images a window shows. A swapchain is tied to the size of the window, so a new one has to be
-/// created whenever that changes.
-/// </summary>
+/// <summary>The images a window shows. Tied to the window's size, so a new one is created whenever that changes.</summary>
 internal sealed unsafe class Swapchain : IDisposable
 {
     public VkSwapchainKHR Handle { get; private set; }
@@ -24,12 +21,10 @@ internal sealed unsafe class Swapchain : IDisposable
     private readonly VulkanContext context;
     private readonly VkImage[] images;
 
-    // Signaled when rendering to the image with the same index is done, and presenting can begin.
-    // These have to be per image (not per frame in flight), as the presentation engine releases
-    // the semaphore only when it is done with the image, which is not tied to when a frame finishes.
+    // Per image, not per frame in flight: the presentation engine releases the semaphore when it is done with the image.
     private readonly VkSemaphore[] renderFinished;
 
-    public Swapchain(VulkanContext context, Vector2i size, bool vsync, Swapchain? previous)
+    public Swapchain(VulkanContext context, Vector2i size, bool vsync, bool lowLatency, bool transparent, Swapchain? previous)
     {
         this.context = context;
 
@@ -53,7 +48,15 @@ internal sealed unsafe class Swapchain : IDisposable
                 Math.Clamp(size.Y, (int) capabilities.minImageExtent.height, (int) capabilities.maxImageExtent.height));
         }
 
-        var imageCount = capabilities.minImageCount + 1;
+        // One image more than the least lets the display and the renderer work without waiting for each other; the least is a shorter
+        // line of pictures waiting to be shown, which is the lower delay (RALSEI_LOW_LATENCY=0 for the first)
+        var presentMode = ChoosePresentMode(vsync, lowLatency);
+        var imageCount = Math.Max(capabilities.minImageCount, 2u) + (Environment.GetEnvironmentVariable("RALSEI_LOW_LATENCY") == "0" ? 1u : 0u);
+
+        // A frame that takes the place of the one waiting needs an image that is neither shown nor waiting
+        if (presentMode == VkPresentModeKHR.PresentModeMailboxKhr)
+            imageCount = Math.Max(imageCount, 3u);
+
         if (capabilities.maxImageCount > 0)
             imageCount = Math.Min(imageCount, capabilities.maxImageCount);
 
@@ -69,9 +72,13 @@ internal sealed unsafe class Swapchain : IDisposable
             : capabilities.currentTransform;
         TransformMismatch = preTransform != capabilities.currentTransform;
 
+        // A transparent window shows the alpha of the picture. The frames hold premultiplied colors, so that is the one mode that shows
+        // them right; the mode for straight colors would brighten every soft edge, so a system that only offers that leaves the window opaque
         var compositeAlpha = (capabilities.supportedCompositeAlpha & VkCompositeAlphaFlagBitsKHR.CompositeAlphaOpaqueBitKhr) != 0
             ? VkCompositeAlphaFlagBitsKHR.CompositeAlphaOpaqueBitKhr
             : VkCompositeAlphaFlagBitsKHR.CompositeAlphaInheritBitKhr;
+        if (transparent && (capabilities.supportedCompositeAlpha & VkCompositeAlphaFlagBitsKHR.CompositeAlphaPreMultipliedBitKhr) != 0)
+            compositeAlpha = VkCompositeAlphaFlagBitsKHR.CompositeAlphaPreMultipliedBitKhr;
 
         var createInfo = new VkSwapchainCreateInfoKHR
         {
@@ -86,7 +93,7 @@ internal sealed unsafe class Swapchain : IDisposable
             imageSharingMode = VkSharingMode.SharingModeExclusive,
             preTransform = preTransform,
             compositeAlpha = compositeAlpha,
-            presentMode = ChoosePresentMode(vsync),
+            presentMode = presentMode,
             clipped = VkUtil.True,
             oldSwapchain = previous?.Handle ?? default
         };
@@ -150,10 +157,10 @@ internal sealed unsafe class Swapchain : IDisposable
         return formats[0];
     }
 
-    private VkPresentModeKHR ChoosePresentMode(bool vsync)
+    private VkPresentModeKHR ChoosePresentMode(bool vsync, bool lowLatency)
     {
         // FIFO is the only mode that is guaranteed to exist, and it waits for vertical blanking
-        if (vsync)
+        if (vsync && !lowLatency)
             return VkPresentModeKHR.PresentModeFifoKhr;
 
         uint count;
@@ -166,7 +173,11 @@ internal sealed unsafe class Swapchain : IDisposable
                 Vk.GetPhysicalDeviceSurfacePresentModesKHR(context.PhysicalDevice, context.Surface, &count, pModes),
                 "vkGetPhysicalDeviceSurfacePresentModesKHR");
 
-        foreach (var preferred in (ReadOnlySpan<VkPresentModeKHR>) [VkPresentModeKHR.PresentModeImmediateKhr, VkPresentModeKHR.PresentModeMailboxKhr])
+        // With vertical sync the mode that shows the newest frame at each blanking; without it, the one that shows frames at once
+        var preferences = vsync
+            ? (ReadOnlySpan<VkPresentModeKHR>) [VkPresentModeKHR.PresentModeMailboxKhr]
+            : [VkPresentModeKHR.PresentModeImmediateKhr, VkPresentModeKHR.PresentModeMailboxKhr];
+        foreach (var preferred in preferences)
         {
             if (Array.IndexOf(modes, preferred) >= 0)
                 return preferred;

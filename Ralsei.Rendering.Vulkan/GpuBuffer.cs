@@ -2,10 +2,7 @@ using OpenTK.Graphics.Vulkan;
 
 namespace Ralsei.Rendering.Vulkan;
 
-/// <summary>
-/// A VkBuffer with its own dedicated memory allocation. Disposing destroys it immediately, so a buffer
-/// that the GPU might still be using has to be handed to <see cref="FrameResources.Defer"/> instead.
-/// </summary>
+/// <summary>A VkBuffer with its own memory. Disposing destroys it at once, so a buffer the GPU might still use goes to <see cref="FrameResources.Defer"/>.</summary>
 internal sealed unsafe class GpuBuffer : IDisposable
 {
     public VkBuffer Buffer { get; private set; }

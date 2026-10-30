@@ -2,58 +2,35 @@ using Ralsei.Mathematics;
 
 namespace Ralsei.Platform.Vulkan;
 
-/// <summary>
-/// The windowing-system side of the Vulkan renderer. The renderer owns the instance, device and
-/// swapchain; the surface only provides what is specific to the host (window or no window).
-/// Handles are passed as raw integers so that this project does not depend on any Vulkan bindings.
-/// </summary>
+/// <summary>The windowing side of the Vulkan renderer: the renderer owns the instance, device and swapchain; the surface provides what is host-specific. Handles are raw integers so this project needs no Vulkan bindings.</summary>
 public interface IVulkanSurface
 {
-    /// <summary>
-    /// The size frames are rendered at. This can be smaller than <see cref="FramebufferSize"/>
-    /// when the output is letterboxed; the frame is centered within the framebuffer.
-    /// </summary>
+    /// <summary>The size frames render at; smaller than <see cref="FramebufferSize"/> when letterboxed (the frame is centered).</summary>
     Vector2i RenderSize { get; }
 
-    /// <summary>
-    /// The size of the presentation target. Ignored if <see cref="IsHeadless"/> is true.
-    /// </summary>
+    /// <summary>The size of the presentation target. Ignored if <see cref="IsHeadless"/>.</summary>
     Vector2i FramebufferSize { get; }
 
-    /// <summary>
-    /// Whether to wait for vertical blanking when presenting.
-    /// </summary>
+    /// <summary>Whether to wait for vertical blanking when presenting.</summary>
     bool VSync { get; }
 
-    /// <summary>
-    /// If true, there is no window to present to and no presentation takes place.
-    /// Frames can still be retrieved through <see cref="IVulkanFrameReceiver"/>.
-    /// </summary>
+    /// <summary>Whether to show the newest frame at each blanking (<c>MAILBOX</c>, where available) instead of queueing frames (<c>FIFO</c>), for a shorter delay from key to picture. Only with <see cref="VSync"/>.</summary>
+    bool LowLatency => false;
+
+    /// <summary>Whether the picture's alpha is shown (the window lets the screen through), as premultiplied colour, where the system can.</summary>
+    bool Transparent => false;
+
+    /// <summary>A frame was handed to the display.</summary>
+    void FramePresented()
+    {
+    }
+
+    /// <summary>If true there is no window and no presentation; frames can still be retrieved through <see cref="IFrameReceiver"/>.</summary>
     bool IsHeadless { get; }
 
-    /// <summary>
-    /// The instance extensions required to create a surface, e.g. VK_KHR_surface and the
-    /// platform-specific one. Empty if <see cref="IsHeadless"/> is true.
-    /// </summary>
+    /// <summary>The instance extensions needed to create a surface (VK_KHR_surface and the platform one). Empty if <see cref="IsHeadless"/>.</summary>
     IReadOnlyList<string> GetRequiredInstanceExtensions();
 
-    /// <summary>
-    /// Creates a VkSurfaceKHR for the given VkInstance and returns its handle.
-    /// The caller takes ownership and destroys the surface before the instance.
-    /// </summary>
+    /// <summary>Creates a VkSurfaceKHR for the VkInstance and returns its handle. The caller owns it and destroys it before the instance.</summary>
     ulong CreateSurface(ulong instance);
-}
-
-/// <summary>
-/// Implemented by a <see cref="IVulkanSurface"/> that wants to receive the pixels of every rendered
-/// frame, e.g. to encode them into a video.
-/// </summary>
-public interface IVulkanFrameReceiver
-{
-    /// <summary>
-    /// Called after a frame has been rendered. The frame is tightly packed RGBA8 with the bottom row
-    /// first (the same layout as glReadPixels). It is not copied: the data is memory owned by the renderer,
-    /// which stays valid until the renderer starts on the next frame.
-    /// </summary>
-    void ReceiveFrame(ReadOnlySpan<byte> rgba, Vector2i size);
 }

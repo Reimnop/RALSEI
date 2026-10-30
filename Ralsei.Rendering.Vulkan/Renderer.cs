@@ -8,6 +8,7 @@ using Ralsei.Core;
 using Ralsei.Core.Data;
 using Ralsei.Data;
 using Ralsei.Mathematics;
+using Ralsei.Platform;
 using Ralsei.Platform.Vulkan;
 using Ralsei.Rendering.Common;
 using Ralsei.Rendering.Data;
@@ -19,7 +20,7 @@ using QuadraticCurve = Tmpx.Common.QuadraticCurve;
 
 namespace Ralsei.Rendering.Vulkan;
 
-public sealed unsafe class Renderer : IRenderer, IDisposable
+internal sealed unsafe class Renderer : IRenderer, IDisposable
 {
     private enum LifecycleCommandType
     {
@@ -46,7 +47,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
     }
 
     /// <summary>The draws of a pass that are drawn with the same textures bound: a range of its indirect commands.</summary>
-    private readonly record struct PageDraw(int[] Textures, int FirstCommand, int CommandCount);
+    private readonly record struct PageDraw(int[] Textures, int FirstCommand, int CommandCount, ClipRect Clip);
 
     // Must match the push constant block in Uber.vert
     [StructLayout(LayoutKind.Sequential)]
@@ -61,8 +62,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
     private const int MsaaSamples = 4;
 
-    // The textures are in the descriptor set 1 of Uber.frag, an array of combined image samplers: all the textures there are if the
-    // device can have them (bindless), or else the page of textures a draw is drawn with
+    // Descriptor set 1 of Uber.frag: all the textures (bindless) or the page a draw is drawn with
     private const int TexturePageSize = 16;
 
     // How many of the slots of a page are used: all, unless the environment asks for fewer to try what many pages do
@@ -90,7 +90,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
     // Storage buffers can't be empty, and these are never read when they hold nothing
     private const ulong MinStorageBufferSize = 16;
 
-    // Mesh rendering data
     private const int InitialVertexBufferCapacity = 1024;
     private const int InitialIndexBufferCapacity = 1024;
 
@@ -99,31 +98,39 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
     private readonly List<MeshInfo> meshInfos = [];
 
-    // Textures, and the samplers they have, which the textures that are sampled the same way share
-    private sealed record TextureEntry(GpuImage Image, GpuSampler Sampler, bool CrispEdges, int BindlessIndex);
+    // Textures sampled alike share a sampler
+    private sealed record TextureEntry(
+        GpuImage Image, GpuSampler Sampler, bool CrispEdges, int BindlessIndex,
+        VkImageLayout Layout = VkImageLayout.ImageLayoutShaderReadOnlyOptimal);
 
     private readonly List<TextureEntry?> textures = [];
+
+    // What passes drew, kept for later passes that use them as textures (TextureHandle.FromPass), by pass index; in the general layout
+    private readonly List<TextureEntry?> passImages = [];
+    private bool[] passOutputUsed = [];
+    private GpuSampler? passSampler;
     private readonly Dictionary<TextureSampling, GpuSampler> samplers = [];
 
-    // What an empty slot of a page of textures is bound to: shaders read all the slots' descriptors, bound or not
+    // What empty page slots are bound to (shaders read every slot's descriptor)
     private GpuImage emptyTexture = null!;
     private GpuSampler emptySampler = null!;
 
-    // Bindless textures: one descriptor set with an array of all of them, written when a texture is created. A texture is in the array
-    // at an index of its own, which is not used for another texture until the frames that might still draw it are done.
+    // Bindless: one descriptor set with every texture; an index is reused only once the frames that might draw it are done
     private bool bindlessTextures;
     private VkDescriptorPool bindlessPool;
     private VkDescriptorSet bindlessSet;
     private readonly Stack<int> freeBindlessIndices = [];
     private int nextBindlessIndex;
 
-    // Without, the draws are divided into pages of textures that are each in a descriptor set of their own
+    // Otherwise draws are divided into pages, each with a descriptor set of its own
     private readonly TexturePager texturePager = new();
 
-    /// <summary>What a pass of the frame being recorded needs when it is: what it was cleared to, its post-processing and its draws.</summary>
+    /// <summary>What a pass of the frame being recorded needs.</summary>
     private sealed class PassRecord
     {
         public ColorRgba ClearColor;
+        public float Opacity;
+        public ClipRect Viewport;
         public PostProcessingState PostProcessingState;
         public readonly List<PageDraw> OpaquePageDraws = [];
         public readonly List<PageDraw> TransparentPageDraws = [];
@@ -131,19 +138,16 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
     private readonly List<PassRecord> passRecords = [];
 
-    // Text rendering data
     private const int InitialGlyphBufferCapacity = 1024;
 
     private readonly PooledSuballocator glyphBufferAllocator = new(InitialGlyphBufferCapacity);
     private readonly List<TextInfo> textInfos = [];
 
-    // Vulkan core
     private readonly VulkanContext context;
     private readonly ComputeShared compute;
     private readonly FrameResources[] frames = new FrameResources[FramesInFlight];
     private int frameIndex;
 
-    // Post processors
     private readonly LegacyBloom legacyBloom;
     private readonly UniversalBloom universalBloom;
     private readonly Glitch glitch;
@@ -152,7 +156,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
     private readonly Blend blend;
     private readonly DepthOfField depthOfField;
 
-    // Graphics data
     private GpuBuffer vertexBuffer, indexBuffer;
     private GpuBuffer glyphStorageBuffer;
 
@@ -168,15 +171,13 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
     private GpuImage msaaDepthImage = null!;
     private GpuImage postProcessImage1 = null!, postProcessImage2 = null!;
 
-    // What the passes of a frame are layered on, when there are more than one. Made when a frame needs it
+    // What multiple passes are layered on
     private GpuImage? compositeImage;
 
-    // Presentation
     private Swapchain? swapchain;
     private Vector2i swapchainRequestedSize;
     private bool swapchainDirty;
 
-    // Frame capture
     private GpuImage? captureImage;
     private GpuBuffer? readbackBuffer;
 
@@ -188,33 +189,34 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
     private readonly Buffer<GpuMeshDrawItem> multiDrawMeshItemsBuffer = new();
     private readonly Buffer<GpuTextDrawItem> multiDrawTextItemsBuffer = new();
 
-    // Lifecycle command lists
+    // The part of the target the current pass draws in (PassBuffer.Viewport)
+    private ClipRect passViewport;
+
     private readonly Queue<MeshLifecycleCommand> meshLifecycleCommands = [];
     private readonly Queue<TextLifecycleCommand> textLifecycleCommands = [];
     private readonly Queue<TextureLifecycleCommand> textureLifecycleCommands = [];
 
-    // Dirty flags
     private bool fontBuffersDirty = true;
 
-    // Injected dependencies
-    private readonly RenderingFactory renderingFactory;
+    private readonly ResourceMirror resources;
+    private bool disposed;
     private readonly BuiltinRenderingPrimitive primitive;
     private readonly IVulkanSurface surface;
-    private readonly IVulkanFrameReceiver? frameReceiver;
+    private readonly IFrameReceiver? frameReceiver;
     private readonly ILogger<Renderer> logger;
 
     public Renderer(
-        IRenderingFactory renderingFactory,
+        RenderingFactory renderingFactory,
         BuiltinRenderingPrimitive primitive,
         IVulkanSurface surface,
         ResourceLoader loader,
         ILogger<Renderer> logger)
     {
-        this.renderingFactory = (RenderingFactory) renderingFactory;
+        resources = renderingFactory.CreateMirror();
         this.primitive = primitive;
         this.surface = surface;
         this.logger = logger;
-        frameReceiver = surface as IVulkanFrameReceiver;
+        frameReceiver = surface as IFrameReceiver;
 
         logger.LogInformation("Initializing Vulkan renderer");
 
@@ -232,7 +234,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
             {
                 var size = surface.RenderSize;
 
-                // Create vertex, index and glyph buffers
                 vertexBuffer = new GpuBuffer(
                     context, (ulong) (InitialVertexBufferCapacity * Unsafe.SizeOf<Vertex>()),
                     VkBufferUsageFlagBits.BufferUsageVertexBufferBit | ResizableBufferUsage, MemoryUsage.DeviceLocal);
@@ -245,30 +246,26 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
                     context, (ulong) (InitialGlyphBufferCapacity * Unsafe.SizeOf<GpuRenderGlyph>()),
                     VkBufferUsageFlagBits.BufferUsageStorageBufferBit | ResizableBufferUsage, MemoryUsage.DeviceLocal);
 
-                // Create the global TMPX storage buffers. They'll be (re)populated lazily by UpdateFontData when
-                // the font set changes.
+                // Filled lazily by UpdateFontData
                 curveBuffer = CreateStorageBuffer(MinStorageBufferSize);
                 curveIndexBuffer = CreateStorageBuffer(MinStorageBufferSize);
                 bandEntryBuffer = CreateStorageBuffer(MinStorageBufferSize);
                 shapeEntryBuffer = CreateStorageBuffer(MinStorageBufferSize);
 
-                // The texture slots that nothing is bound to read this: nothing samples a slot that no draw names
+                // Read by texture slots that nothing is bound to
                 emptyTexture = GpuImage.CreateGeneral(
                     context, new Vector2i(1, 1), VkFormat.FormatR8g8b8a8Unorm,
                     VkImageUsageFlagBits.ImageUsageSampledBit | VkImageUsageFlagBits.ImageUsageTransferDstBit);
                 emptySampler = new GpuSampler(context, TextureSampling.Nearest);
 
-                // Textures are bindless if the device has what that takes (or the environment says not to, to try the pages)
+                // Bindless if the device supports it (RALSEI_NO_BINDLESS forces pages)
                 bindlessTextures = context.SupportsBindlessTextures && Environment.GetEnvironmentVariable("RALSEI_NO_BINDLESS") is null;
                 logger.LogInformation(bindlessTextures ? "Textures are bindless" : "Textures are bound {PageSize} at a time", usedPageSize);
 
-                // Initialize pipelines
                 CreateUberPipelines(loader);
 
-                // Initialize render targets
                 CreateRenderTargets(size, null);
 
-                // Initialize post processors
                 legacyBloom = new LegacyBloom(context, compute, loader);
                 universalBloom = new UniversalBloom(context, compute, loader);
                 glitch = new Glitch(context, compute, loader);
@@ -286,39 +283,33 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
             throw;
         }
 
-        // Push all current meshes into the lifecycle command list so that they are created in the next frame
-        foreach (var (id, mesh) in this.renderingFactory.Meshes)
-            meshLifecycleCommands.Enqueue(new MeshLifecycleCommand(id, LifecycleCommandType.Create, (mesh.Vertices, mesh.Indices)));
-
-        // Push all current textures and texts into the lifecycle command lists so that they are created in the next frame
-        foreach (var (id, texture) in this.renderingFactory.Textures)
-            textureLifecycleCommands.Enqueue(new TextureLifecycleCommand(id, LifecycleCommandType.Create, (texture.Width, texture.Height, texture.Rgba8PixelData, texture.Sampling)));
-
-        foreach (var (id, text) in this.renderingFactory.Texts)
-            textLifecycleCommands.Enqueue(new TextLifecycleCommand(id, LifecycleCommandType.Create, text.Glyphs));
-
-        // Subscribe to events
-        this.renderingFactory.FontBuffersUpdated += OnFontBuffersUpdated;
-        this.renderingFactory.Meshes.ItemInserted += OnMeshInserted;
-        this.renderingFactory.Meshes.ItemRemoved += OnMeshRemoved;
-        this.renderingFactory.Textures.ItemInserted += OnTextureInserted;
-        this.renderingFactory.Textures.ItemRemoved += OnTextureRemoved;
-        this.renderingFactory.Texts.ItemInserted += OnTextInserted;
-        this.renderingFactory.Texts.ItemRemoved += OnTextRemoved;
+        // The mirror starts with everything that exists and hears of the rest as frames are drawn
+        resources.FontBuffersUpdated += OnFontBuffersUpdated;
+        resources.Meshes.ItemInserted += OnMeshInserted;
+        resources.Meshes.ItemRemoved += OnMeshRemoved;
+        resources.Textures.ItemInserted += OnTextureInserted;
+        resources.Textures.ItemRemoved += OnTextureRemoved;
+        resources.Texts.ItemInserted += OnTextInserted;
+        resources.Texts.ItemRemoved += OnTextRemoved;
     }
 
     public void Dispose()
     {
+        // Disposed once whoever asks (the scope that made it, the host); a second pass would delete what is gone
+        if (disposed)
+            return;
+        disposed = true;
+
         logger.LogInformation("Disposing Vulkan renderer");
 
-        // Unsubscribe from events
-        renderingFactory.FontBuffersUpdated -= OnFontBuffersUpdated;
-        renderingFactory.Meshes.ItemInserted -= OnMeshInserted;
-        renderingFactory.Meshes.ItemRemoved -= OnMeshRemoved;
-        renderingFactory.Textures.ItemInserted -= OnTextureInserted;
-        renderingFactory.Textures.ItemRemoved -= OnTextureRemoved;
-        renderingFactory.Texts.ItemInserted -= OnTextInserted;
-        renderingFactory.Texts.ItemRemoved -= OnTextRemoved;
+        resources.FontBuffersUpdated -= OnFontBuffersUpdated;
+        resources.Meshes.ItemInserted -= OnMeshInserted;
+        resources.Meshes.ItemRemoved -= OnMeshRemoved;
+        resources.Textures.ItemInserted -= OnTextureInserted;
+        resources.Textures.ItemRemoved -= OnTextureRemoved;
+        resources.Texts.ItemInserted -= OnTextInserted;
+        resources.Texts.ItemRemoved -= OnTextRemoved;
+        resources.Dispose();
 
         // Nothing is left to dispose if the device could not even be created
         if (context.Device.Handle == 0)
@@ -330,7 +321,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         // Let the GPU finish before destroying anything it might still be using
         context.WaitIdle();
 
-        // Dispose post processors
         legacyBloom?.Dispose();
         universalBloom?.Dispose();
         glitch?.Dispose();
@@ -339,11 +329,11 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         blend?.Dispose();
         depthOfField?.Dispose();
 
-        // Delete Vulkan resources
         foreach (var texture in textures)
             texture?.Image.Dispose();
         foreach (var sampler in samplers.Values)
             sampler.Dispose();
+        passSampler?.Dispose();
         emptyTexture?.Dispose();
         emptySampler?.Dispose();
 
@@ -425,6 +415,8 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         if (renderSize.X <= 0 || renderSize.Y <= 0)
             return;
 
+        resources.Apply(drawDataProvider.ResourceVersion);
+
         var framebufferSize = Vector2i.Zero;
         if (!context.IsHeadless)
         {
@@ -433,19 +425,17 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
                 return;
         }
 
-        // Pick the next frame and wait until the GPU is done with the last time it was used
+        // Wait until the GPU is done with this frame's last use
         var frame = frames[frameIndex];
         frameIndex = (frameIndex + 1) % FramesInFlight;
         frame.WaitForCompletion();
 
-        // Get the image to present to
         var imageIndex = 0u;
         if (!context.IsHeadless && !TryAcquireSwapchainImage(frame, framebufferSize, out imageIndex))
             return;
 
         frame.Begin();
 
-        // Update Vulkan data
         UpdateVulkanData(frame, renderSize);
 
         // Gather the data of all the passes in the same buffers, and upload it
@@ -461,16 +451,28 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         while (passRecords.Count < passCount)
             passRecords.Add(new PassRecord());
 
+        // Passes whose output a later draw uses get an image before the draws are gathered
+        if (passOutputUsed.Length < passCount)
+            passOutputUsed = new bool[Math.Max(passCount, passOutputUsed.Length * 2)];
+        Array.Clear(passOutputUsed);
+        RenderUtil.ValidatePassTextures(drawDataProvider, passOutputUsed);
+        for (var passIndex = 0; passIndex < passCount; passIndex++)
+        {
+            if (passOutputUsed[passIndex])
+                EnsurePassImage(passIndex);
+        }
+
         for (var passIndex = 0; passIndex < passCount; passIndex++)
         {
             var drawData = drawDataProvider.CreateDrawData(passIndex);
             var record = passRecords[passIndex];
             record.ClearColor = drawData.ClearColor;
+            record.Opacity = drawData.Opacity;
+            record.Viewport = drawData.Viewport;
             record.PostProcessingState = drawData.PostProcessingState;
             record.OpaquePageDraws.Clear();
             record.TransparentPageDraws.Clear();
 
-            // Split draw list into opaque and transparent
             opaqueDrawCommands.Clear();
             transparentDrawCommands.Clear();
 
@@ -483,7 +485,8 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
                     {
                         DrawType = drawCommand.DrawType,
                         DrawId = drawCommand.DrawId,
-                        Depth = currentDepthInt / (float) (1 << 23)
+                        Depth = currentDepthInt / (float) (1 << 23),
+                        Clip = drawCommand.Clip
                     });
                 }
                 else
@@ -492,19 +495,18 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
                     {
                         DrawType = drawCommand.DrawType,
                         DrawId = drawCommand.DrawId,
-                        Depth = currentDepthInt / (float) (1 << 23)
+                        Depth = currentDepthInt / (float) (1 << 23),
+                        Clip = drawCommand.Clip
                     });
                 }
 
                 currentDepthInt++;
             }
 
-            // Reverse opaque draw data list so that it is drawn
-            // from front to back to avoid overdraw
+            // Opaque draws go front to back to avoid overdraw
             opaqueDrawCommands.Reverse();
 
-            // Get camera matrix (view and projection)
-            var camera = RenderUtil.GetCameraMatrix(drawData.CameraState, renderSize);
+            var camera = drawData.ViewMatrix;
 
             AppendDrawData(CollectionsMarshal.AsSpan(opaqueDrawCommands), ref currentMeshDrawId, ref currentTextDrawId, drawData, camera, record.OpaquePageDraws);
             AppendDrawData(CollectionsMarshal.AsSpan(transparentDrawCommands), ref currentMeshDrawId, ref currentTextDrawId, drawData, camera, record.TransparentPageDraws);
@@ -525,23 +527,24 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         multiDrawMeshItemsBufferData.CopyTo(new Span<byte>(frame.MeshDrawItemBuffer!.Mapped, multiDrawMeshItemsBufferData.Length));
         multiDrawTextItemsBufferData.CopyTo(new Span<byte>(frame.TextDrawItemBuffer!.Mapped, multiDrawTextItemsBufferData.Length));
 
-        // The passes are layered on an image of their own, unless there is only one
+        // Passes are layered on an image of their own, unless there is only one
         var layered = passCount > 1;
         if (layered)
             ClearCompositeImage(frame);
 
-        // Render
         var finalImage = postProcessImage1;
         for (var passIndex = 0; passIndex < passCount; passIndex++)
         {
             var record = passRecords[passIndex];
             RenderScene(frame, record);
 
-            // Do post-processing
-            // (The passes of a layered frame that have no effects to finish with are left as they are, as the frame has them)
+            // (Passes of a layered frame with no effects are left as they are)
             var passImage = HandlePostProcessing(frame, record.PostProcessingState, postProcessImage1, postProcessImage2, skipIfNoFinalEffects: layered);
+            if (passOutputUsed[passIndex])
+                RecordKeepPassOutput(frame, passIndex, passImage);
+
             if (layered)
-                blend.Process(frame, currentFboSize, passImage, compositeImage!);
+                blend.Process(frame, currentFboSize, passImage, compositeImage!, record.Opacity);
             else
                 finalImage = passImage;
         }
@@ -549,7 +552,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         if (layered)
             finalImage = compositeImage!;
 
-        // The post-processing of the frame as a whole, on what the passes came to
         if (drawDataProvider.FinalPostProcessingState is { } finalState)
         {
             var spareImage = finalImage == postProcessImage1 ? postProcessImage2 : postProcessImage1;
@@ -563,11 +565,9 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
             VkPipelineStageFlagBits2.PipelineStage2AllTransferBit,
             VkAccessFlagBits2.Access2TransferReadBit));
 
-        // Present to window
         if (!context.IsHeadless)
             RecordPresent(frame, finalImage, renderSize, swapchain!.Images[(int) imageIndex], new ColorRgba());
 
-        // Get the frame back to the CPU
         if (frameReceiver != null)
             RecordCapture(frame, finalImage, renderSize);
 
@@ -591,7 +591,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
     {
         imageIndex = 0;
 
-        // If the swapchain is stale, we find out here (or when presenting) and try again with a new one
+        // A stale swapchain is found out here or when presenting; try again with a new one
         for (var attempt = 0; attempt < 2; attempt++)
         {
             if (swapchain == null || swapchainDirty || swapchainRequestedSize != framebufferSize)
@@ -627,7 +627,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         context.WaitIdle();
 
         var old = swapchain;
-        swapchain = new Swapchain(context, framebufferSize, surface.VSync, old);
+        swapchain = new Swapchain(context, framebufferSize, surface.VSync, surface.LowLatency, surface.Transparent, old);
         old?.Dispose();
 
         swapchainRequestedSize = framebufferSize;
@@ -697,6 +697,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         switch (result)
         {
             case VkResult.Success:
+                surface.FramePresented();
                 break;
             case VkResult.SuboptimalKhr:
                 swapchainDirty |= !swapchain.TransformMismatch;
@@ -723,8 +724,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         var meshInfosSpan = CollectionsMarshal.AsSpan(meshInfos);
         var textInfosSpan = CollectionsMarshal.AsSpan(textInfos);
 
-        // The draws that can be drawn with the textures bound together make a page. With bindless textures there is
-        // no need to bind any, and everything is one page.
+        // Without bindless, the draws are divided into pages by texture
         if (!bindlessTextures)
             texturePager.Plan(drawData, drawCommands, usedPageSize);
 
@@ -737,9 +737,21 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
             // Meshes drawn one after another with the same mesh share an indirect command, as its instances
             var lastMeshDrawId = currentMeshDrawId;
+            int[] pageTextures = bindlessTextures ? [] : texturePager.TexturesOf(page).ToArray();
+            var runStart = firstIndirectCommand;
+            var runClip = default(ClipRect);
             for (var i = page.FirstCommand; i < pageEnd; i++)
             {
                 ref var currentCommand = ref drawCommands[i];
+
+                // A new clip starts a new run of draws (batches of one mesh never span a clip change)
+                if (currentCommand.Clip != runClip)
+                {
+                    if (multiDrawIndirectBuffer.Length > runStart)
+                        pageDraws.Add(new PageDraw(pageTextures, runStart, multiDrawIndirectBuffer.Length - runStart, runClip));
+                    runStart = multiDrawIndirectBuffer.Length;
+                    runClip = currentCommand.Clip;
+                }
 
                 switch (currentCommand.DrawType)
                 {
@@ -749,7 +761,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
                         ref var meshInfo = ref meshInfosSpan[meshDrawItem.MeshHandle.Id];
 
                         var mvp = meshDrawItem.Transform * camera;
-                        var texture = TextureFieldsOf(meshDrawItem, bindlessTextures ? -1 : texturePager.SlotOf(i));
+                        var texture = TextureFieldsOf(meshDrawItem.RenderMode == RenderMode.Normal ? meshDrawItem.Texture : TextureHandle.None, bindlessTextures ? -1 : texturePager.SlotOf(i));
 
                         multiDrawMeshItemsBuffer.Append(new GpuMeshDrawItem
                         {
@@ -769,10 +781,10 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
                         });
                         currentMeshDrawId++;
 
-                        // Determine if the batch should be broken
                         if (i + 1 >= pageEnd ||
                             drawCommands[i + 1].DrawType != DrawType.Mesh ||
-                            meshDrawItem.MeshHandle.Id != drawData.MeshDrawItems[drawCommands[i + 1].DrawId].MeshHandle.Id)
+                            meshDrawItem.MeshHandle.Id != drawData.MeshDrawItems[drawCommands[i + 1].DrawId].MeshHandle.Id ||
+                            drawCommands[i + 1].Clip != currentCommand.Clip)
                         {
                             multiDrawItemsBuffer.Append(new GpuMultiDrawItem
                             {
@@ -834,9 +846,8 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
                 }
             }
 
-            var commandCount = multiDrawIndirectBuffer.Length - firstIndirectCommand;
-            if (commandCount > 0)
-                pageDraws.Add(new PageDraw(bindlessTextures ? [] : texturePager.TexturesOf(page).ToArray(), firstIndirectCommand, commandCount));
+            if (multiDrawIndirectBuffer.Length > runStart)
+                pageDraws.Add(new PageDraw(pageTextures, runStart, multiDrawIndirectBuffer.Length - runStart, runClip));
         }
     }
 
@@ -847,6 +858,11 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
         var cmd = frame.Cmd;
         var size = currentFboSize;
+        passViewport = record.Viewport;
+
+        // A pass that is drawn in a part of the target is cleared to nothing outside the part, and to its colour inside it
+        if (passViewport.Enabled)
+            clearColor = default;
 
         // The multisampled targets only live for the duration of the pass, so their contents are never needed.
         // The resolved image is in the general layout all the time.
@@ -892,7 +908,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
         if (msaaColorImage != null)
         {
-            // Render to the multisampled image and resolve into the first post processing image
             colorAttachment.imageView = msaaColorImage.View;
             colorAttachment.imageLayout = VkImageLayout.ImageLayoutColorAttachmentOptimal;
             colorAttachment.resolveMode = VkResolveModeFlagBits.ResolveModeAverageBit;
@@ -928,43 +943,58 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         };
         Vk.CmdBeginRendering(cmd, &renderingInfo);
 
-        // The viewport is deliberately not flipped. This gives textures the same orientation as in OpenGL
-        // (the first row is the bottom of the picture), which the post processing passes depend on.
-        // The frame is flipped when it is presented.
+        // Not flipped, so textures have the same orientation as in OpenGL (first row at the bottom), which post-processing depends on. The frame is flipped on present.
+        var part = passViewport;
         var viewport = new VkViewport
         {
-            x = 0, y = 0,
-            width = size.X, height = size.Y,
+            x = part.Enabled ? part.X : 0, y = part.Enabled ? size.Y - part.Bottom : 0,
+            width = part.Enabled ? part.Width : size.X, height = part.Enabled ? part.Height : size.Y,
             minDepth = 0, maxDepth = 1
         };
         var scissor = new VkRect2D { extent = new VkExtent2D { width = (uint) size.X, height = (uint) size.Y } };
         Vk.CmdSetViewport(cmd, 0, 1, &viewport);
         Vk.CmdSetScissor(cmd, 0, 1, &scissor);
 
+        if (part.Enabled)
+        {
+            var inside = new ColorRgba(record.ClearColor.R * record.ClearColor.A, record.ClearColor.G * record.ClearColor.A, record.ClearColor.B * record.ClearColor.A, record.ClearColor.A);
+            var clear = new VkClearAttachment { aspectMask = VkImageAspectFlagBits.ImageAspectColorBit, colorAttachment = 0 };
+            clear.clearValue.color.float32[0] = inside.R;
+            clear.clearValue.color.float32[1] = inside.G;
+            clear.clearValue.color.float32[2] = inside.B;
+            clear.clearValue.color.float32[3] = inside.A;
+            var rect = new VkClearRect
+            {
+                rect = new VkRect2D
+                {
+                    offset = new VkOffset2D { x = Math.Max(part.X, 0), y = Math.Max(size.Y - part.Bottom, 0) },
+                    extent = new VkExtent2D { width = (uint) Math.Max(part.Width, 0), height = (uint) Math.Max(part.Height, 0) }
+                },
+                baseArrayLayer = 0,
+                layerCount = 1
+            };
+            Vk.CmdClearAttachments(cmd, 1, &clear, 1, &rect);
+        }
+
         if (record.OpaquePageDraws.Count + record.TransparentPageDraws.Count > 0)
         {
-            // Bind storage buffers
             var set = frame.AllocateDescriptorSet(uberSetLayout);
             WriteUberDescriptorSet(set, frame);
             Vk.CmdBindDescriptorSets(cmd, VkPipelineBindPoint.PipelineBindPointGraphics, uberPipelineLayout, 0, 1, &set, 0, null);
 
-            // Bindless, every texture is already bound
             if (bindlessTextures)
             {
                 var textureSet = bindlessSet;
                 Vk.CmdBindDescriptorSets(cmd, VkPipelineBindPoint.PipelineBindPointGraphics, uberPipelineLayout, 1, 1, &textureSet, 0, null);
             }
 
-            // Bind our vertex and index buffers
             var vertexBufferHandle = vertexBuffer.Buffer;
             ulong vertexBufferOffset = 0;
             Vk.CmdBindVertexBuffers(cmd, 0, 1, &vertexBufferHandle, &vertexBufferOffset);
             Vk.CmdBindIndexBuffer(cmd, indexBuffer.Buffer, 0, VkIndexType.IndexTypeUint32);
 
-            // Opaque pass, disable blending, enable depth writing
             DrawPages(frame, opaquePipeline, record.OpaquePageDraws);
 
-            // Transparent pass, enable blending, disable depth write
             DrawPages(frame, transparentPipeline, record.TransparentPageDraws);
         }
 
@@ -977,9 +1007,81 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
             VkAccessFlagBits2.Access2ShaderReadBit | VkAccessFlagBits2.Access2TransferReadBit));
     }
 
-    /// <summary>
-    /// Makes the image the passes are layered on exist, and empty: transparent.
-    /// </summary>
+    /// <summary>Makes the image that keeps what a pass drew.</summary>
+    private void EnsurePassImage(int passIndex)
+    {
+        passImages.EnsureCount(passIndex + 1);
+        if (passImages[passIndex] != null)
+            return;
+
+        var image = GpuImage.CreateGeneral(
+            context, currentFboSize, ColorFormat,
+            VkImageUsageFlagBits.ImageUsageSampledBit | VkImageUsageFlagBits.ImageUsageTransferDstBit);
+        passSampler ??= new GpuSampler(context, TextureSampling.Linear);
+
+        var bindlessIndex = bindlessTextures ? TakeBindlessIndex() : -1;
+        var entry = new TextureEntry(image, passSampler, false, bindlessIndex, VkImageLayout.ImageLayoutGeneral);
+        if (bindlessIndex >= 0)
+            WriteBindlessTexture(bindlessIndex, entry);
+
+        passImages[passIndex] = entry;
+    }
+
+    /// <summary>Copies what a pass drew to its kept image, turned over so the first row is the top.</summary>
+    private void RecordKeepPassOutput(FrameResources frame, int passIndex, GpuImage source)
+    {
+        var cmd = frame.Cmd;
+        var target = passImages[passIndex]!.Image;
+
+        // Whatever used the image before, in this frame or earlier ones, is done with it, and the pass is done being drawn
+        VkUtil.PipelineBarrier(cmd, VkUtil.MemoryBarrier(
+            VkPipelineStageFlagBits2.PipelineStage2AllCommandsBit,
+            VkAccessFlagBits2.Access2MemoryReadBit | VkAccessFlagBits2.Access2MemoryWriteBit,
+            VkPipelineStageFlagBits2.PipelineStage2AllTransferBit,
+            VkAccessFlagBits2.Access2TransferReadBit | VkAccessFlagBits2.Access2TransferWriteBit));
+
+        var region = new VkImageBlit2
+        {
+            sType = VkStructureType.StructureTypeImageBlit2,
+            srcSubresource = VkUtil.ColorLayers(),
+            dstSubresource = VkUtil.ColorLayers()
+        };
+        region.srcOffsets[0] = new VkOffset3D { x = 0, y = 0, z = 0 };
+        region.srcOffsets[1] = new VkOffset3D { x = currentFboSize.X, y = currentFboSize.Y, z = 1 };
+        region.dstOffsets[0] = new VkOffset3D { x = 0, y = currentFboSize.Y, z = 0 };
+        region.dstOffsets[1] = new VkOffset3D { x = currentFboSize.X, y = 0, z = 1 };
+
+        var blitInfo = new VkBlitImageInfo2
+        {
+            sType = VkStructureType.StructureTypeBlitImageInfo2,
+            srcImage = source.Image,
+            srcImageLayout = VkImageLayout.ImageLayoutGeneral,
+            dstImage = target.Image,
+            dstImageLayout = VkImageLayout.ImageLayoutGeneral,
+            regionCount = 1,
+            pRegions = &region,
+            filter = VkFilter.FilterNearest
+        };
+        Vk.CmdBlitImage2(cmd, &blitInfo);
+
+        // The draws of the later passes sample it, and the passes after this one write over the image it was copied from
+        VkUtil.PipelineBarrier(cmd, VkUtil.MemoryBarrier(
+            VkPipelineStageFlagBits2.PipelineStage2AllTransferBit,
+            VkAccessFlagBits2.Access2TransferReadBit | VkAccessFlagBits2.Access2TransferWriteBit,
+            VkPipelineStageFlagBits2.PipelineStage2AllCommandsBit,
+            VkAccessFlagBits2.Access2MemoryReadBit | VkAccessFlagBits2.Access2MemoryWriteBit));
+    }
+
+    /// <summary>The texture with an id: a texture of the factory or a pass output.</summary>
+    private TextureEntry? FindTexture(int id)
+    {
+        if (TextureHandle.TryGetPassIndex(id, out var passIndex))
+            return passIndex < passImages.Count ? passImages[passIndex] : null;
+
+        return id < textures.Count ? textures[id] : null;
+    }
+
+    /// <summary>Makes the layering image exist, cleared to transparent.</summary>
     private void ClearCompositeImage(FrameResources frame)
     {
         compositeImage ??= GpuImage.CreateGeneral(
@@ -988,7 +1090,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
         var cmd = frame.Cmd;
 
-        // Whatever used the image before, in this frame or earlier ones, is done with it
         VkUtil.PipelineBarrier(cmd, VkUtil.MemoryBarrier(
             VkPipelineStageFlagBits2.PipelineStage2AllCommandsBit,
             VkAccessFlagBits2.Access2MemoryReadBit | VkAccessFlagBits2.Access2MemoryWriteBit,
@@ -1034,21 +1135,18 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         Vk.UpdateDescriptorSets(context.Device, StorageBufferBindingCount, writes, 0, null);
     }
 
-    /// <summary>
-    /// Writes the textures of a page to a descriptor set, in the slots the draws of the page have for them. A slot that nothing is
-    /// bound to (or whose texture is gone) gets the empty texture.
-    /// </summary>
+    /// <summary>Writes a page's textures to a descriptor set; empty slots get the empty texture.</summary>
     private void WritePageDescriptorSet(VkDescriptorSet set, ReadOnlySpan<int> pageTextures)
     {
         var imageInfos = stackalloc VkDescriptorImageInfo[TexturePageSize];
         for (var i = 0; i < TexturePageSize; i++)
         {
-            var entry = i < pageTextures.Length && pageTextures[i] < textures.Count ? textures[pageTextures[i]] : null;
+            var entry = i < pageTextures.Length ? FindTexture(pageTextures[i]) : null;
 
             // The empty texture is kept in the general layout, like the images the compute shaders use
             imageInfos[i] = entry is null
                 ? new VkDescriptorImageInfo { sampler = emptySampler.Sampler, imageView = emptyTexture.View, imageLayout = VkImageLayout.ImageLayoutGeneral }
-                : new VkDescriptorImageInfo { sampler = entry.Sampler.Sampler, imageView = entry.Image.View, imageLayout = VkImageLayout.ImageLayoutShaderReadOnlyOptimal };
+                : new VkDescriptorImageInfo { sampler = entry.Sampler.Sampler, imageView = entry.Image.View, imageLayout = entry.Layout };
         }
 
         var textureWrite = new VkWriteDescriptorSet
@@ -1063,9 +1161,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         Vk.UpdateDescriptorSets(context.Device, 1, &textureWrite, 0, null);
     }
 
-    /// <summary>
-    /// Draws the pages of a pass, binding the textures of each first unless they are bindless.
-    /// </summary>
+    /// <summary>Draws the pages of a pass, binding each page's textures first unless they are bindless.</summary>
     private void DrawPages(FrameResources frame, VkPipeline pipeline, List<PageDraw> pages)
     {
         foreach (var page in pages)
@@ -1077,26 +1173,56 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
                 Vk.CmdBindDescriptorSets(frame.Cmd, VkPipelineBindPoint.PipelineBindPointGraphics, uberPipelineLayout, 1, 1, &textureSet, 0, null);
             }
 
+            SetClip(frame.Cmd, page.Clip);
             DrawIndirect(frame, pipeline, page.FirstCommand, page.CommandCount);
         }
+
+        SetClip(frame.Cmd, default);
+    }
+
+    /// <summary>Cuts what is drawn next to <paramref name="clip"/>, or stops cutting if there is none.</summary>
+    private void SetClip(VkCommandBuffer cmd, ClipRect clip)
+    {
+        // The part of the target the pass is in: its clip is in pixels of that part, and nothing shows outside it
+        var size = currentFboSize;
+        var part = passViewport;
+        var originX = part.Enabled ? part.X : 0;
+        var originY = part.Enabled ? part.Y : 0;
+        var width = part.Enabled ? part.Width : size.X;
+        var height = part.Enabled ? part.Height : size.Y;
+        var left = 0;
+        var top = 0;
+        var right = width;
+        var bottom = height;
+        if (clip.Enabled)
+        {
+            left = Math.Clamp(clip.X, 0, width);
+            top = Math.Clamp(clip.Y, 0, height);
+            right = Math.Clamp(clip.Right, left, width);
+            bottom = Math.Clamp(clip.Bottom, top, height);
+        }
+
+        // The viewport is not flipped (see RenderScene), so the origin of the scissor is the bottom-left corner, as in OpenGL
+        var scissor = new VkRect2D
+        {
+            offset = new VkOffset2D { x = Math.Max(originX + left, 0), y = Math.Max(size.Y - (originY + bottom), 0) },
+            extent = new VkExtent2D { width = (uint) (right - left), height = (uint) (bottom - top) }
+        };
+        Vk.CmdSetScissor(cmd, 0, 1, &scissor);
     }
 
     /// <summary>What a draw item says of its texture: the index or the slot in its page, and the flags the shader reads.</summary>
     private readonly record struct TextureFields(int Texture0, int Texture1, int Flags);
 
-    private TextureFields TextureFieldsOf(in MeshDrawItem item, int slot)
+    private TextureFields TextureFieldsOf(TextureHandle texture, int slot)
     {
-        var texture = item.Texture;
-        if (item.RenderMode != RenderMode.Normal ||
-            texture.IsNone || texture.Id >= textures.Count || textures[texture.Id] is not { } entry)
+        if (texture.IsNone || FindTexture(texture.Id) is not { } entry)
             return new TextureFields(-1, 0, 0);
 
         return new TextureFields(bindlessTextures ? entry.BindlessIndex : slot, 0, entry.CrispEdges ? 1 : 0);
     }
 
-    /// <summary>
-    /// Draws <paramref name="count"/> of the queued draw commands, starting at <paramref name="first"/>.
-    /// </summary>
+    /// <summary>Draws <paramref name="count"/> queued draw commands from <paramref name="first"/>.</summary>
     private void DrawIndirect(FrameResources frame, VkPipeline pipeline, int first, int count)
     {
         if (count == 0)
@@ -1111,7 +1237,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         var pushConstants = new UberPushConstants
         {
             // Set viewport-size uniform for sub-pixel dilation in the text vertex shader
-            ViewportSize = new Vector2(currentFboSize.X, currentFboSize.Y),
+            ViewportSize = passViewport.Enabled ? new Vector2(passViewport.Width, passViewport.Height) : new Vector2(currentFboSize.X, currentFboSize.Y),
             DrawBase = (uint) first
         };
 
@@ -1167,9 +1293,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
     #region Output
 
-    /// <summary>
-    /// Copies the finished frame, centered, into the swapchain image and prepares the image for presentation.
-    /// </summary>
+    /// <summary>Copies the finished frame, centered, into the swapchain image and prepares it for presentation.</summary>
     private void RecordPresent(FrameResources frame, GpuImage source, Vector2i size, VkImage target, ColorRgba clearColor)
     {
         var cmd = frame.Cmd;
@@ -1183,7 +1307,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
             VkPipelineStageFlagBits2.PipelineStage2AllTransferBit, VkAccessFlagBits2.Access2None,
             VkPipelineStageFlagBits2.PipelineStage2AllTransferBit, VkAccessFlagBits2.Access2TransferWriteBit));
 
-        // Blit the frame to the swapchain image
         var blitSize = new Vector2i(Math.Min(size.X, framebufferSize.X), Math.Min(size.Y, framebufferSize.Y));
         var offset = (framebufferSize - blitSize) / 2;
 
@@ -1235,14 +1358,11 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
             VkPipelineStageFlagBits2.PipelineStage2None, VkAccessFlagBits2.Access2None));
     }
 
-    /// <summary>
-    /// Copies the finished frame into a buffer the CPU can read, as 8-bit RGBA like what ends up in a window.
-    /// </summary>
+    /// <summary>Copies the finished frame into a buffer the CPU can read, as 8-bit RGBA.</summary>
     private void RecordCapture(FrameResources frame, GpuImage source, Vector2i size)
     {
         var cmd = frame.Cmd;
 
-        // Replace the target if the frame size has changed
         if (captureImage == null || captureImage.Size != size)
         {
             if (captureImage != null)
@@ -1265,7 +1385,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
             VkAccessFlagBits2.Access2MemoryReadBit | VkAccessFlagBits2.Access2MemoryWriteBit,
             VkPipelineStageFlagBits2.PipelineStage2AllTransferBit, VkAccessFlagBits2.Access2TransferWriteBit));
 
-        // Converts to 8 bits per channel; the rows stay in the order they are in the frame (bottom row first)
+        // Converts to 8 bits per channel, and turns the frame over: it has its first row at the bottom, and the receiver is given raster order
         var region = new VkImageBlit2
         {
             sType = VkStructureType.StructureTypeImageBlit2,
@@ -1273,7 +1393,8 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
             dstSubresource = VkUtil.ColorLayers()
         };
         region.srcOffsets[1] = new VkOffset3D { x = size.X, y = size.Y, z = 1 };
-        region.dstOffsets[1] = new VkOffset3D { x = size.X, y = size.Y, z = 1 };
+        region.dstOffsets[0] = new VkOffset3D { x = 0, y = size.Y, z = 0 };
+        region.dstOffsets[1] = new VkOffset3D { x = size.X, y = 0, z = 1 };
 
         var blitInfo = new VkBlitImageInfo2
         {
@@ -1322,7 +1443,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
     private void UpdateMeshData(FrameResources frame)
     {
-        // Loop through the lifecycle command list
         while (meshLifecycleCommands.TryDequeue(out var command))
         {
             switch (command.Type)
@@ -1335,7 +1455,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
                     var vtxAlloc = vertexBufferAllocator.Allocate(vertices.Length, (oldCapacity, newCapacity) =>
                     {
-                        // Recreate vertex buffer with new capacity
                         vertexBuffer = GrowBuffer(frame, vertexBuffer, (ulong) (newCapacity * Unsafe.SizeOf<Vertex>()));
 
                         logger.LogInformation("Mesh vertex buffer reallocated from {OldCapacity} to {NewCapacity}", oldCapacity, newCapacity);
@@ -1343,17 +1462,14 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
                     var idxAlloc = indexBufferAllocator.Allocate(indices.Length, (oldCapacity, newCapacity) =>
                     {
-                        // Recreate index buffer with new capacity
                         indexBuffer = GrowBuffer(frame, indexBuffer, (ulong) (newCapacity * sizeof(int)));
 
                         logger.LogInformation("Mesh index buffer reallocated from {OldCapacity} to {NewCapacity}", oldCapacity, newCapacity);
                     });
 
-                    // Upload vertex data
                     frame.UploadToBuffer(vertexBuffer, (ulong) (vtxAlloc.Offset * Unsafe.SizeOf<Vertex>()), MemoryMarshal.AsBytes(vertices));
                     frame.UploadToBuffer(indexBuffer, (ulong) (idxAlloc.Offset * sizeof(int)), MemoryMarshal.AsBytes(indices));
 
-                    // Store mesh info
                     meshInfos.EnsureCount(command.Id + 1);
                     meshInfos[command.Id] = new MeshInfo
                     {
@@ -1393,7 +1509,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
                         VkImageUsageFlagBits.ImageUsageSampledBit | VkImageUsageFlagBits.ImageUsageTransferDstBit);
                     frame.UploadTexture(image, pixelData);
 
-                    // The sampling is the texture's own, and the textures that sample alike have one sampler
                     if (!samplers.TryGetValue(sampling, out var sampler))
                         samplers[sampling] = sampler = new GpuSampler(context, sampling);
 
@@ -1447,7 +1562,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         {
             sampler = entry.Sampler.Sampler,
             imageView = entry.Image.View,
-            imageLayout = VkImageLayout.ImageLayoutShaderReadOnlyOptimal
+            imageLayout = entry.Layout
         };
         var write = new VkWriteDescriptorSet
         {
@@ -1469,11 +1584,11 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
         fontBuffersDirty = false;
 
-        var curves = renderingFactory.FontCurves.AsSpan();
-        var curveIndices = renderingFactory.FontCurveIndices.AsSpan();
-        var bandEntries = renderingFactory.FontBandEntries.AsSpan();
+        var curves = resources.FontCurves.AsSpan();
+        var curveIndices = resources.FontCurveIndices.AsSpan();
+        var bandEntries = resources.FontBandEntries.AsSpan();
 
-        var shapeEntries = renderingFactory.FontShapeEntries;
+        var shapeEntries = resources.FontShapeEntries;
         var gpuShapeEntries = shapeEntries.Select(x => new GpuShapeEntry
         {
             HorizontalBandEntryBaseIndex = x.HorizontalBandEntryBaseIndex,
@@ -1496,15 +1611,14 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
         logger.LogInformation(
             "Font buffers updated, registered {Curves} curves, {CurveIndices} curve indices, {Bands} band entries, {Shapes} shape entries",
-            renderingFactory.FontCurves.Length,
-            renderingFactory.FontCurveIndices.Length,
-            renderingFactory.FontBandEntries.Length,
-            renderingFactory.FontShapeEntries.Length);
+            resources.FontCurves.Length,
+            resources.FontCurveIndices.Length,
+            resources.FontBandEntries.Length,
+            resources.FontShapeEntries.Length);
     }
 
     private void UpdateTextData(FrameResources frame)
     {
-        // Loop through the lifecycle command list
         while (textLifecycleCommands.TryDequeue(out var command))
         {
             switch (command.Type)
@@ -1523,19 +1637,16 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
                     var glyphAlloc = glyphBufferAllocator.Allocate(renderGlyphs.Length, (oldCapacity, newCapacity) =>
                     {
-                        // Recreate glyph buffer with new capacity
                         glyphStorageBuffer = GrowBuffer(frame, glyphStorageBuffer, (ulong) (newCapacity * Unsafe.SizeOf<GpuRenderGlyph>()));
 
                         logger.LogInformation("Glyph buffer reallocated from {OldCapacity} to {NewCapacity}", oldCapacity, newCapacity);
                     });
 
-                    // Upload glyph data
                     frame.UploadToBuffer(
                         glyphStorageBuffer,
                         (ulong) (glyphAlloc.Offset * Unsafe.SizeOf<GpuRenderGlyph>()),
                         MemoryMarshal.AsBytes<GpuRenderGlyph>(renderGlyphs));
 
-                    // Store text info
                     textInfos.EnsureCount(command.Id + 1);
                     textInfos[command.Id] = new TextInfo
                     {
@@ -1569,10 +1680,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         logger.LogInformation("Framebuffer size updated, now at {Width}x{Height}", currentFboSize.X, currentFboSize.Y);
     }
 
-    /// <summary>
-    /// Creates the targets the scene is rendered to, replacing the ones that exist already. The old ones are handed to
-    /// <paramref name="frame"/> to be destroyed when the GPU is done with them (or are destroyed right away if there is none).
-    /// </summary>
+    /// <summary>Creates the render targets, replacing existing ones. The old ones go to <paramref name="frame"/> to be destroyed when the GPU is done, or are destroyed at once if there is none.</summary>
     private void CreateRenderTargets(Vector2i size, FrameResources? frame)
     {
         if (frame != null)
@@ -1589,7 +1697,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
             context, size, DepthFormat, VkImageUsageFlagBits.ImageUsageDepthStencilAttachmentBit,
             context.MsaaSamples, VkImageAspectFlagBits.ImageAspectDepthBit);
 
-        // Post process images
         const VkImageUsageFlagBits postProcessUsage =
             GpuImage.ComputeUsage |
             VkImageUsageFlagBits.ImageUsageColorAttachmentBit |
@@ -1610,6 +1717,19 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         if (compositeImage != null)
             frame.Defer(compositeImage);
         compositeImage = null;
+
+        // Earlier frames might still be sampling what the passes drew, and be reading the indices of the images
+        foreach (var passImage in passImages)
+        {
+            if (passImage == null)
+                continue;
+
+            frame.Defer(passImage.Image);
+            if (passImage.BindlessIndex >= 0)
+                frame.Defer(new BindlessIndexRelease(this, passImage.BindlessIndex));
+        }
+
+        passImages.Clear();
     }
 
     private void DisposeRenderTargets()
@@ -1620,15 +1740,16 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         postProcessImage2?.Dispose();
         compositeImage?.Dispose();
         compositeImage = null;
+
+        foreach (var passImage in passImages)
+            passImage?.Image.Dispose();
+        passImages.Clear();
     }
 
     private GpuBuffer CreateStorageBuffer(ulong size)
         => new(context, size, VkBufferUsageFlagBits.BufferUsageStorageBufferBit | ResizableBufferUsage, MemoryUsage.DeviceLocal);
 
-    /// <summary>
-    /// Creates a bigger version of <paramref name="buffer"/> with the same contents. The old buffer is
-    /// destroyed once the frame is done.
-    /// </summary>
+    /// <summary>Makes a bigger copy of the buffer with the same contents; the old one is destroyed once the frame is done.</summary>
     private GpuBuffer GrowBuffer(FrameResources frame, GpuBuffer buffer, ulong newSize)
     {
         var usage = buffer == vertexBuffer
@@ -1648,9 +1769,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         return newBuffer;
     }
 
-    /// <summary>
-    /// Replaces a storage buffer with a new one that holds <paramref name="data"/>.
-    /// </summary>
+    /// <summary>Replaces a storage buffer with a new one that holds <paramref name="data"/>.</summary>
     private void ReplaceStorageBuffer(FrameResources frame, ref GpuBuffer buffer, ReadOnlySpan<byte> data)
     {
         frame.Defer(buffer);
@@ -1664,7 +1783,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
     private void CreateUberPipelines(ResourceLoader loader)
     {
-        // Descriptor set 0 has a storage buffer per binding
         var bindings = stackalloc VkDescriptorSetLayoutBinding[StorageBufferBindingCount];
         for (var i = 0; i < StorageBufferBindingCount; i++)
         {
@@ -1687,8 +1805,7 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         VkUtil.Check(Vk.CreateDescriptorSetLayout(context.Device, &setLayoutInfo, null, &setLayout), "vkCreateDescriptorSetLayout");
         uberSetLayout = setLayout;
 
-        // Descriptor set 1 has the textures, in one array: of all of them, which are written whenever, with places that nothing is
-        // written to (bindless); or of the page's
+        // Descriptor set 1 has the textures: one array of all of them (bindless) or the page's
         var textureBinding = new VkDescriptorSetLayoutBinding
         {
             binding = 0,
@@ -1717,7 +1834,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
 
         if (bindlessTextures)
         {
-            // The one set of all the textures, which lasts
             var poolSize = new VkDescriptorPoolSize
             {
                 type = VkDescriptorType.DescriptorTypeCombinedImageSampler,
@@ -1747,7 +1863,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
             bindlessSet = set;
         }
 
-        // Pipeline layout
         var setLayouts = stackalloc VkDescriptorSetLayout[] { setLayout, texturesLayout };
         var pushRange = new VkPushConstantRange
         {
@@ -1767,7 +1882,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
         VkUtil.Check(Vk.CreatePipelineLayout(context.Device, &layoutInfo, null, &pipelineLayout), "vkCreatePipelineLayout");
         uberPipelineLayout = pipelineLayout;
 
-        // Pipelines
         var vertexModule = ShaderUtil.CreateModule(context, loader, "Uber.vert");
         var fragmentModule = ShaderUtil.CreateModule(context, loader, bindlessTextures ? "Uber.frag" : "Uber.paged.frag");
         try
@@ -1804,7 +1918,6 @@ public sealed unsafe class Renderer : IRenderer, IDisposable
                 }
             };
 
-            // Vertex buffer layout and attributes
             var vertexBindings = stackalloc VkVertexInputBindingDescription[1];
             vertexBindings[0] = new VkVertexInputBindingDescription 
             {

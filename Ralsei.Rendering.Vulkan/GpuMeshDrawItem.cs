@@ -6,7 +6,7 @@ namespace Ralsei.Rendering.Vulkan;
 
 // std430 layout
 [StructLayout(LayoutKind.Explicit, Size = 128)]
-public struct GpuMeshDrawItem
+internal struct GpuMeshDrawItem
 {
     [FieldOffset(0)] public Matrix3x2 Mvp;
     [FieldOffset(24)] public float Z;

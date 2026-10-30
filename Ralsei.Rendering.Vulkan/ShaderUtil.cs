@@ -5,9 +5,7 @@ namespace Ralsei.Rendering.Vulkan;
 
 internal static unsafe class ShaderUtil
 {
-    /// <summary>
-    /// Creates a shader module from the embedded SPIR-V at Shaders/{name}.spv.
-    /// </summary>
+    /// <summary>Creates a shader module from the embedded SPIR-V at Shaders/{name}.spv.</summary>
     public static VkShaderModule CreateModule(VulkanContext context, ResourceLoader loader, string name)
     {
         var code = loader.ReadResourceBytes($"Shaders/{name}.spv");

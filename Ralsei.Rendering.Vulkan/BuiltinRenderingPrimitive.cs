@@ -4,14 +4,15 @@ using Ralsei.Rendering.Handle;
 
 namespace Ralsei.Rendering.Vulkan;
 
-public class BuiltinRenderingPrimitive : IDisposable
+internal class BuiltinRenderingPrimitive : IDisposable
 {
     public MeshHandle GlyphMeshHandle { get; }
 
-    private readonly IRenderingFactory renderingFactory;
+    private readonly RenderingFactory renderingFactory;
+    private bool disposed;
 
     // The renderer creates this on the render thread, where waiting for the factory's queue would never finish
-    public BuiltinRenderingPrimitive(IRenderingFactory renderingFactory)
+    public BuiltinRenderingPrimitive(RenderingFactory renderingFactory)
     {
         this.renderingFactory = renderingFactory;
 
@@ -29,11 +30,16 @@ public class BuiltinRenderingPrimitive : IDisposable
             3, 2, 1
         ];
 
-        GlyphMeshHandle = ((RenderingFactory) renderingFactory).CreateMeshOnRenderThread(new Mesh(vertices, indices));
+        GlyphMeshHandle = renderingFactory.CreateMesh(vertices, indices);
     }
 
     public void Dispose()
     {
+        // The container and the renderer may both dispose it, and a mesh can only be destroyed once
+        if (disposed)
+            return;
+        disposed = true;
+
         renderingFactory.DestroyMesh(GlyphMeshHandle);
     }
 }

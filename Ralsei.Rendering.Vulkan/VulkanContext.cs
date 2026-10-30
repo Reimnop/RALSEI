@@ -15,22 +15,14 @@ internal enum MemoryUsage
     /// <summary>Host-visible memory the CPU writes once and the GPU copies from (staging buffers).</summary>
     Staging,
 
-    /// <summary>
-    /// Host-visible memory the CPU writes every frame and the GPU reads directly (per-frame draw data).
-    /// On a discrete GPU this is device local memory the CPU can write to (resizable BAR), so that the GPU does not
-    /// have to read across the bus. An integrated GPU shares system memory with the CPU anyway, and its device local,
-    /// host-visible memory is a carve-out that is very slow to write to from the CPU, so plain host memory is used there.
-    /// </summary>
+    /// <summary>Host-visible memory the CPU writes every frame and the GPU reads directly. Discrete GPUs use resizable-BAR device memory; integrated ones plain host memory, as their device-local carve-out is very slow to write.</summary>
     Dynamic,
 
     /// <summary>Host-visible, preferably cached memory the CPU reads back from.</summary>
     Readback
 }
 
-/// <summary>
-/// Owns the Vulkan instance, the logical device and the single queue everything is submitted to,
-/// along with the small utilities (memory allocation, one-shot command buffers) the rest of the renderer needs.
-/// </summary>
+/// <summary>Owns the Vulkan instance, the logical device and the single queue everything is submitted to, with small utilities (memory allocation, one-shot command buffers).</summary>
 internal sealed unsafe class VulkanContext : IDisposable
 {
     private const string ValidationLayerName = "VK_LAYER_KHRONOS_validation";
@@ -49,10 +41,7 @@ internal sealed unsafe class VulkanContext : IDisposable
     public VkPhysicalDeviceLimits Limits { get; private set; }
     public bool SupportsMultiDrawIndirect { get; private set; }
 
-    /// <summary>
-    /// Whether every texture can be in one descriptor array that any draw indexes (descriptor indexing, which is what bindless
-    /// textures are in Vulkan): see <see cref="BindlessTextureCapacity"/>.
-    /// </summary>
+    /// <summary>Whether every texture can live in one descriptor array that any draw indexes (descriptor indexing): see <see cref="BindlessTextureCapacity"/>.</summary>
     public bool SupportsBindlessTextures { get; private set; }
 
     /// <summary>How many textures the descriptor array can hold, if <see cref="SupportsBindlessTextures"/>.</summary>
@@ -371,7 +360,6 @@ internal sealed unsafe class VulkanContext : IDisposable
             return false;
         }
 
-        // Features
         var features11 = new VkPhysicalDeviceVulkan11Features { sType = VkStructureType.StructureTypePhysicalDeviceVulkan11Features };
         var features13 = new VkPhysicalDeviceVulkan13Features
         {
@@ -403,7 +391,6 @@ internal sealed unsafe class VulkanContext : IDisposable
             return false;
         }
 
-        // HDR render targets and post-processing images
         VkFormatProperties formatProperties;
         Vk.GetPhysicalDeviceFormatProperties(device, VkFormat.FormatR16g16b16a16Sfloat, &formatProperties);
         const VkFormatFeatureFlagBits requiredFeatures =
@@ -419,7 +406,6 @@ internal sealed unsafe class VulkanContext : IDisposable
             return false;
         }
 
-        // Swapchain
         if (!IsHeadless && !HasDeviceExtension(device, Vk.KhrSwapchainExtensionName))
         {
             rejection = $"does not support {Vk.KhrSwapchainExtensionName}";
@@ -461,11 +447,7 @@ internal sealed unsafe class VulkanContext : IDisposable
         return false;
     }
 
-    /// <summary>
-    /// Asks the driver the questions a swapchain depends on. Some drivers claim to support presenting to a window and then
-    /// fail these (e.g. an integrated GPU that does not drive the display the window is on), which is better to find out
-    /// here, where another device can still be picked, than when the swapchain is created.
-    /// </summary>
+    /// <summary>Asks the driver what a swapchain depends on. Some drivers claim to support presenting and then fail these, which is better found out here, where another device can still be picked.</summary>
     private bool CanPresentToSurface(VkPhysicalDevice device, out string problem)
     {
         VkSurfaceCapabilitiesKHR capabilities;
@@ -520,7 +502,6 @@ internal sealed unsafe class VulkanContext : IDisposable
 
     private void CreateDevice()
     {
-        // Query what the device supports so that optional features can be enabled
         var supported12 = new VkPhysicalDeviceVulkan12Features { sType = VkStructureType.StructureTypePhysicalDeviceVulkan12Features };
         VkPhysicalDeviceFeatures2 supported = new() { sType = VkStructureType.StructureTypePhysicalDeviceFeatures2, pNext = &supported12 };
         Vk.GetPhysicalDeviceFeatures2(PhysicalDevice, &supported);
@@ -629,10 +610,7 @@ internal sealed unsafe class VulkanContext : IDisposable
 
     public delegate void RecordCommands(VkCommandBuffer cmd);
 
-    /// <summary>
-    /// Records and submits a one-off command buffer, and blocks until the GPU has executed it.
-    /// Meant for rare operations such as initial image layout transitions.
-    /// </summary>
+    /// <summary>Records and submits a one-off command buffer and blocks until the GPU has run it. For rare operations such as initial layout transitions.</summary>
     public void SubmitImmediate(RecordCommands record)
     {
         var allocInfo = new VkCommandBufferAllocateInfo
@@ -683,10 +661,7 @@ internal sealed unsafe class VulkanContext : IDisposable
         VkUtil.Check(Vk.DeviceWaitIdle(Device), "vkDeviceWaitIdle");
     }
 
-    /// <summary>
-    /// Allocates device memory for the given requirements, trying the memory types that best fit
-    /// <paramref name="usage"/> first.
-    /// </summary>
+    /// <summary>Allocates device memory for the requirements, trying the memory types that best fit <paramref name="usage"/> first.</summary>
     public VkDeviceMemory AllocateMemory(in VkMemoryRequirements requirements, MemoryUsage usage)
     {
         const VkMemoryPropertyFlagBits deviceLocal = VkMemoryPropertyFlagBits.MemoryPropertyDeviceLocalBit;
@@ -725,7 +700,6 @@ internal sealed unsafe class VulkanContext : IDisposable
 
                 if (result is not (VkResult.ErrorOutOfDeviceMemory or VkResult.ErrorOutOfHostMemory))
                     VkUtil.Check(result, "vkAllocateMemory");
-                // Heap is full, try the next candidate
             }
         }
 

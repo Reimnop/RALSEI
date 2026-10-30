@@ -14,7 +14,12 @@ public enum DrawType
 public struct DrawCommand
 {
     public DrawType DrawType;
+
+    /// <summary>The index of the item this command draws, in the pass's items of the command's type.</summary>
     public int DrawId;
+
+    /// <summary>What the draw is cut to. The default is no cut.</summary>
+    public ClipRect Clip;
 }
 
 public struct MeshDrawItem
@@ -22,25 +27,20 @@ public struct MeshDrawItem
     public MeshHandle MeshHandle;
     public Matrix3x2 Transform;
     public ColorRgba Color1;
+
+    /// <summary>The second colour of a gradient, used when <see cref="RenderMode"/> is not <see cref="Data.RenderMode.Normal"/>.</summary>
     public ColorRgba Color2;
+
     public RenderMode RenderMode;
     public float GradientRotation;
     public float GradientScale;
 
-    /// <summary>
-    /// The texture to paint the mesh with, or <see cref="TextureHandle.None"/> (what <c>default</c> is) for a flat colour.
-    /// The mesh's UV coordinates (expected in 0 to 1) are mapped onto the region <see cref="MinUV"/> to <see cref="MaxUV"/>
-    /// of the texture. A mesh with a gradient <see cref="RenderMode"/> is painted with the gradient and has no texture.
-    /// The texture is multiplied with <see cref="Color1"/>.
-    /// </summary>
+    /// <summary>The texture to paint the mesh with, or <see cref="TextureHandle.None"/> (what <c>default</c> is) for a flat colour. UVs (0 to 1) map onto the region <see cref="MinUV"/> to <see cref="MaxUV"/>, and the texture is multiplied with <see cref="Color1"/>. A gradient <see cref="RenderMode"/> has no texture. Can be an earlier pass's output (<see cref="TextureHandle.FromPass"/>); an error for a pass that is not after it.</summary>
     public TextureHandle Texture;
     public Vector2 MinUV;
     public Vector2 MaxUV;
 
-    /// <summary>
-    /// Fog replaces the colour of every visible pixel while keeping its transparency: the red, green and blue are the
-    /// fog colour and the alpha says how much of it to mix in (0 for none, 1 for a flat silhouette). Only applies to a texture.
-    /// </summary>
+    /// <summary>Fog replaces the colour of every visible pixel, keeping its transparency: red, green and blue are the colour, alpha how much to mix in (0 none, 1 a flat silhouette). Only applies to a texture.</summary>
     public ColorRgba Fog;
 }
 
@@ -51,29 +51,34 @@ public struct TextDrawItem
     public ColorRgba Color;
 }
 
-/// <summary>
-/// What one pass of a frame draws.
-/// </summary>
+/// <summary>What one pass of a frame draws.</summary>
 public ref struct DrawData
 {
-    public CameraState CameraState;
+    /// <summary>Maps the world the pass draws in to clip space (see <see cref="PassBuffer.ViewMatrix"/>).</summary>
+    public Matrix3x2 ViewMatrix;
     public PostProcessingState PostProcessingState;
     public ColorRgba ClearColor;
+
+    /// <summary>How much of the pass shows when it is laid over the passes before it: 1 for all of it.</summary>
+    public float Opacity;
+
+    /// <summary>The part of the target the pass is drawn in (see <see cref="PassBuffer.Viewport"/>); <c>default</c> is all of it.</summary>
+    public ClipRect Viewport;
+
     public Span<DrawCommand> DrawCommands;
     public Span<MeshDrawItem> MeshDrawItems;
     public Span<TextDrawItem> TextDrawItems;
 }
 
-/// <summary>
-/// A frame, as the renderer reads it: one or more passes, which are drawn in order and layered (see <see cref="FrameBuffer"/>).
-/// </summary>
+/// <summary>A frame, as the renderer reads it: one or more passes, drawn in order and layered (see <see cref="FrameBuffer"/>).</summary>
 public interface IDrawDataProvider
 {
     int PassCount { get; }
 
-    /// <summary>
-    /// What is done to the passes once they are layered, if anything: the post-processing of the frame as a whole, after that of each pass.
-    /// </summary>
+    /// <summary>The <see cref="IRenderingFactory.Version"/> the frame was submitted at: the renderer applies the changes up to it, and no later ones, before drawing.</summary>
+    long ResourceVersion { get; }
+
+    /// <summary>The post-processing of the layered passes, after each pass's own, if any.</summary>
     PostProcessingState? FinalPostProcessingState { get; }
 
     DrawData CreateDrawData(int passIndex);

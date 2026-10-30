@@ -9,6 +9,7 @@ using Ralsei.Core;
 using Ralsei.Core.Data;
 using Ralsei.Data;
 using Ralsei.Mathematics;
+using Ralsei.Platform;
 using Ralsei.Platform.OpenGL;
 using Ralsei.Rendering.Common;
 using Ralsei.Rendering.Data;
@@ -18,7 +19,7 @@ using Ralsei.Util;
 
 namespace Ralsei.Rendering.OpenGLES;
 
-public class Renderer : IRenderer, IDisposable
+internal class Renderer : IRenderer, IDisposable
 {
     private enum LifecycleCommandType
     {
@@ -33,8 +34,7 @@ public class Renderer : IRenderer, IDisposable
     private const int MsaaSamples = 4;
     private const int FontTextureWidth = 2048;
 
-    // Only so many textures can be bound at once, and a draw has the slot its texture is in. The texture units of the slots start
-    // after the four of the font's.
+    // Only so many textures can be bound at once; a draw has the slot its texture is in. Slot units start after the font's four.
     private const int FirstTextureSlotUnit = 4;
     private const int MaxTexturePageSize = 16;
 
@@ -59,14 +59,19 @@ public class Renderer : IRenderer, IDisposable
     }
     
     private readonly IOpenGLSurface surface;
+    private readonly IFrameReceiver? frameReceiver;
+    private FrameReadback? frameReadback;
+    private int presentFramebufferHandle;
 
     private readonly int programHandle;
-    
+
+    // The part of the target the pass that is being drawn is in (see PassBuffer.Viewport)
+    private ClipRect passViewport;
+
     private readonly int glyphProgramHandle;
     private readonly int glyphMvpUniformLocation, glyphZUniformLocation, glyphBaseColorUniformLocation;
     private readonly int glyphViewportSizeUniformLocation;
 
-    // TMPX global font data as texture buffers (populated by UpdateFontData)
     private int fontCurvesTextureHandle;
     private int fontCurveIndicesTextureHandle;
     private int fontBandEntriesTextureHandle;
@@ -78,12 +83,16 @@ public class Renderer : IRenderer, IDisposable
     private int postProcessTextureHandle1, postProcessTextureHandle2;
     private readonly int postProcessFboHandle;
 
-    // What the passes of a frame are layered on, when there are more than one. Made when a frame needs it
+    // What multiple passes are layered on
     private int compositeTextureHandle;
+
+    // What passes drew, kept for later passes that use them as textures (TextureHandle.FromPass), by pass index
+    private readonly List<TextureInfo?> passTextures = [];
+    private bool[] passOutputUsed = [];
+    private int passCopyReadFramebufferHandle, passCopyDrawFramebufferHandle;
 
     private readonly int emptyVao;
     
-    // Post-processing
     private readonly LegacyBloom legacyBloom;
     private readonly UniversalBloom universalBloom;
     private readonly Glitch glitch;
@@ -92,7 +101,6 @@ public class Renderer : IRenderer, IDisposable
     private readonly Blend blend;
     private readonly DepthOfField depthOfField;
     
-    // Temporary draw data lists
     private readonly List<DrawCommandWithDepth> opaqueDrawCommands = [];
     private readonly List<DrawCommandWithDepth> transparentDrawCommands = [];
 
@@ -102,14 +110,12 @@ public class Renderer : IRenderer, IDisposable
     private readonly int textVertexArrayHandle;
     private int textInstanceBufferHandle;
     
-    // Unlit instancing buffer
     private const int InitialUnlitInstanceBufferCapacity = 1024;
     
     private GpuUnlitDrawItem[] unlitDrawItems = new GpuUnlitDrawItem[InitialUnlitInstanceBufferCapacity];
     private int unlitInstanceBuffer;
     private int unlitInstanceBufferCapacity = InitialUnlitInstanceBufferCapacity;
     
-    // Mesh rendering data
     private const int InitialVertexBufferCapacity = 1024;
     private const int InitialIndexBufferCapacity = 1024;
 
@@ -118,42 +124,41 @@ public class Renderer : IRenderer, IDisposable
 
     private readonly List<MeshInfo> meshInfos = [];
 
-    // Texture data
     private readonly List<TextureInfo?> textureInfos = [];
     private readonly int texturePageSize;
     private readonly TexturePager texturePager = new();
     
-    // Text rendering data
     private const int InitialGlyphBufferCapacity = 1024;
     
     private readonly PooledSuballocator glyphBufferAllocator = new(InitialGlyphBufferCapacity);
     private readonly List<TextInfo> textInfos = [];
     
-    // Lifecycle command lists
     private readonly Queue<MeshLifecycleCommand> meshLifecycleCommands = [];
     private readonly Queue<TextLifecycleCommand> textLifecycleCommands = [];
     private readonly Queue<TextureLifecycleCommand> textureLifecycleCommands = [];
 
-    // Dirty flags
     private bool fontBuffersDirty = true;
     
-    // Injected dependencies
-    private readonly RenderingFactory renderingFactory;
+    private readonly ResourceMirror resources;
+    private bool disposed;
     private readonly ILogger<Renderer> logger;
     
     public Renderer(
-        IRenderingFactory renderingFactory,
+        RenderingFactory renderingFactory,
         IOpenGLSurface surface,
         ResourceLoader loader,
         ILogger<Renderer> logger)
     {
-        this.renderingFactory = (RenderingFactory) renderingFactory;
+        resources = renderingFactory.CreateMirror();
         this.surface = surface;
+        frameReceiver = surface as IFrameReceiver;
         this.logger = logger;
         
         logger.LogInformation("Initializing OpenGL ES renderer");
+
+        if (!surface.TryMakeCurrent())
+            throw new InvalidOperationException("Failed to make OpenGL context current");
         
-        // Log OpenGL information
         logger.LogInformation("OpenGL ES: {Version}", GL.GetString(StringName.Version));
         logger.LogInformation("Renderer: {Renderer}", GL.GetString(StringName.Renderer));
         logger.LogInformation("Vendor: {Vendor}", GL.GetString(StringName.Vendor));
@@ -164,8 +169,7 @@ public class Renderer : IRenderer, IDisposable
         {
             var initialSize = this.surface.RenderSize;
             
-            // How many textures the draws of a page can use together: what a fragment shader can sample from, and what fits in the units
-            // after the font's
+            // How many textures a page can use together: what a fragment shader can sample, and what fits in the units after the font's
             texturePageSize = Math.Clamp(
                 Math.Min(GL.GetInteger(GetPName.MaxTextureImageUnits), GL.GetInteger(GetPName.MaxCombinedTextureImageUnits) - FirstTextureSlotUnit),
                 1, MaxTexturePageSize);
@@ -174,25 +178,20 @@ public class Renderer : IRenderer, IDisposable
             logger.LogInformation("Textures bound at once: {PageSize}", texturePageSize);
             var pageSizeDefine = new KeyValuePair<string, string?>("RALSEI_TEXTURE_PAGE_SIZE", texturePageSize.ToString(CultureInfo.InvariantCulture));
 
-            // Create main program handle
             programHandle = LoaderUtil.LoadShaderProgram(loader, "Unlit.vert", "Unlit.frag", pageSizeDefine);
 
-            // Set texture units
             var texturesUniformLocation = GL.GetUniformLocation(programHandle, "uTextures");
             GL.UseProgram(programHandle);
             for (var i = 0; i < texturePageSize; i++)
                 GL.Uniform1i(texturesUniformLocation + i, i + FirstTextureSlotUnit);
 
-            // Create glyph program handle
             glyphProgramHandle = LoaderUtil.LoadShaderProgram(loader, "Text.vert", "Text.frag");
 
-            // Get glyph uniform locations
             glyphMvpUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uMvp");
             glyphZUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uZ");
             glyphBaseColorUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uBaseColor");
             glyphViewportSizeUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uViewportSize");
 
-            // Bind texture sampler uniforms to fixed texture units
             var curvesUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uCurves");
             var curveIndicesUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uCurveIndices");
             var bandEntriesUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uBandEntries");
@@ -204,12 +203,10 @@ public class Renderer : IRenderer, IDisposable
             GL.Uniform1i(bandEntriesUniformLocation, 2);
             GL.Uniform1i(shapeEntriesUniformLocation, 3);
             
-            // Create unlit instancing buffer
             unlitInstanceBuffer = GL.GenBuffer();
             GL.BindBuffer(BufferTarget.ArrayBuffer, unlitInstanceBuffer);
             GL.BufferData(BufferTarget.ArrayBuffer, InitialUnlitInstanceBufferCapacity * Unsafe.SizeOf<GpuUnlitDrawItem>(), IntPtr.Zero, BufferUsage.DynamicDraw);
 
-            // Create main VAO
             mainVertexArrayHandle = GL.GenVertexArray();
             GL.BindVertexArray(mainVertexArrayHandle);
             
@@ -233,7 +230,6 @@ public class Renderer : IRenderer, IDisposable
             GL.VertexAttribDivisor(8, 1);
             GL.VertexAttribDivisor(9, 1);
             
-            // Create text instance VAO
             textVertexArrayHandle = GL.GenVertexArray();
             GL.BindVertexArray(textVertexArrayHandle);
 
@@ -250,7 +246,6 @@ public class Renderer : IRenderer, IDisposable
             GL.VertexAttribDivisor(3, 1);
             GL.VertexAttribDivisor(4, 1);
             
-            // Initialize FBO
             fboColorBufferHandle = GL.GenRenderbuffer();
             GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, fboColorBufferHandle);
             GL.RenderbufferStorageMultisample(RenderbufferTarget.Renderbuffer, MsaaSamples, InternalFormat.Rgba16f, initialSize.X, initialSize.Y);
@@ -264,7 +259,6 @@ public class Renderer : IRenderer, IDisposable
             GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, RenderbufferTarget.Renderbuffer, fboColorBufferHandle);
             GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment, RenderbufferTarget.Renderbuffer, fboDepthBufferHandle);
 
-            // Initialize post-process FBO
             postProcessTextureHandle1 = GL.GenTexture();
             GL.BindTexture(TextureTarget.Texture2d, postProcessTextureHandle1);
             GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, initialSize.X, initialSize.Y);
@@ -273,15 +267,12 @@ public class Renderer : IRenderer, IDisposable
             GL.BindTexture(TextureTarget.Texture2d, postProcessTextureHandle2);
             GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, initialSize.X, initialSize.Y);
 
-            // Allocate post-process FBO
             postProcessFboHandle = GL.GenFramebuffer();
             
             currentFboSize = initialSize;
             
-            // Create empty VAO
             emptyVao = GL.GenVertexArray();
 
-            // Initialize post-processing
             var vertexShader = LoaderUtil.LoadPostProcessVertexShader(loader);
 
             legacyBloom = new LegacyBloom(loader, vertexShader);
@@ -292,51 +283,43 @@ public class Renderer : IRenderer, IDisposable
             blend = new Blend(loader, vertexShader);
             depthOfField = new DepthOfField(loader, vertexShader);
 
-            // Clean up
             GL.DeleteShader(vertexShader);
         }
 
         #endregion
         
-        // Push all current meshes into the lifecycle command list so that they are created in the next frame
-        foreach (var (id, mesh) in this.renderingFactory.Meshes)
-            meshLifecycleCommands.Enqueue(new MeshLifecycleCommand(id, LifecycleCommandType.Create, (mesh.Vertices, mesh.Indices)));
-        
-        // Push all current textures and texts into the lifecycle command lists so that they are created in the next frame
-        foreach (var (id, texture) in this.renderingFactory.Textures)
-            textureLifecycleCommands.Enqueue(new TextureLifecycleCommand(id, LifecycleCommandType.Create, (texture.Width, texture.Height, texture.Rgba8PixelData, texture.Sampling)));
-
-        foreach (var (id, text) in this.renderingFactory.Texts)
-            textLifecycleCommands.Enqueue(new TextLifecycleCommand(id, LifecycleCommandType.Create, text.Glyphs));
-        
-        // Subscribe to events
-        this.renderingFactory.FontBuffersUpdated += OnFontBuffersUpdated;
-        this.renderingFactory.Meshes.ItemInserted += OnMeshInserted;
-        this.renderingFactory.Meshes.ItemRemoved += OnMeshRemoved;
-        this.renderingFactory.Textures.ItemInserted += OnTextureInserted;
-        this.renderingFactory.Textures.ItemRemoved += OnTextureRemoved;
-        this.renderingFactory.Texts.ItemInserted += OnTextInserted;
-        this.renderingFactory.Texts.ItemRemoved += OnTextRemoved;
+        // The mirror starts with everything that exists and hears of the rest as frames are drawn
+        resources.FontBuffersUpdated += OnFontBuffersUpdated;
+        resources.Meshes.ItemInserted += OnMeshInserted;
+        resources.Meshes.ItemRemoved += OnMeshRemoved;
+        resources.Textures.ItemInserted += OnTextureInserted;
+        resources.Textures.ItemRemoved += OnTextureRemoved;
+        resources.Texts.ItemInserted += OnTextInserted;
+        resources.Texts.ItemRemoved += OnTextRemoved;
     }
     
     public void Dispose()
     {
+        // Disposed once whoever asks (the scope that made it, the host); a second pass would delete what is gone
+        if (disposed)
+            return;
+        disposed = true;
+
         logger.LogInformation("Disposing OpenGL ES renderer");
         
-        // Unsubscribe from events
-        renderingFactory.FontBuffersUpdated -= OnFontBuffersUpdated;
-        renderingFactory.Meshes.ItemInserted -= OnMeshInserted;
-        renderingFactory.Meshes.ItemRemoved -= OnMeshRemoved;
-        renderingFactory.Textures.ItemInserted -= OnTextureInserted;
-        renderingFactory.Textures.ItemRemoved -= OnTextureRemoved;
-        renderingFactory.Texts.ItemInserted -= OnTextInserted;
-        renderingFactory.Texts.ItemRemoved -= OnTextRemoved;
+        resources.FontBuffersUpdated -= OnFontBuffersUpdated;
+        resources.Meshes.ItemInserted -= OnMeshInserted;
+        resources.Meshes.ItemRemoved -= OnMeshRemoved;
+        resources.Textures.ItemInserted -= OnTextureInserted;
+        resources.Textures.ItemRemoved -= OnTextureRemoved;
+        resources.Texts.ItemInserted -= OnTextInserted;
+        resources.Texts.ItemRemoved -= OnTextRemoved;
+        resources.Dispose();
         
         // Context already lost, no need to continue disposing
-        if (surface.IsContextLost)
+        if (surface.IsContextLost || !surface.TryMakeCurrent())
             return;
         
-        // Delete GL resources
         GL.DeleteProgram(programHandle);
         GL.DeleteProgram(glyphProgramHandle);
         
@@ -365,6 +348,8 @@ public class Renderer : IRenderer, IDisposable
         GL.DeleteTexture(postProcessTextureHandle2);
         GL.DeleteFramebuffer(postProcessFboHandle);
         
+        frameReadback?.Dispose();
+        GL.DeleteFramebuffer(presentFramebufferHandle);
         GL.DeleteVertexArray(emptyVao);
         
         legacyBloom.Dispose();
@@ -376,6 +361,20 @@ public class Renderer : IRenderer, IDisposable
         depthOfField.Dispose();
         
         GL.DeleteTexture(compositeTextureHandle);
+        DeletePassTextures();
+        GL.DeleteFramebuffer(passCopyReadFramebufferHandle);
+        GL.DeleteFramebuffer(passCopyDrawFramebufferHandle);
+    }
+
+    private void DeletePassTextures()
+    {
+        foreach (var passTexture in passTextures)
+        {
+            if (passTexture.HasValue)
+                GL.DeleteTexture(passTexture.Value.Handle);
+        }
+
+        passTextures.Clear();
     }
 
     private void OnFontBuffersUpdated(object? sender, EventArgs e)
@@ -415,13 +414,23 @@ public class Renderer : IRenderer, IDisposable
     
     public void ProcessFrame(IDrawDataProvider drawDataProvider)
     {
+        if (!surface.TryMakeCurrent())
+            return;
+
+        resources.Apply(drawDataProvider.ResourceVersion);
+
         var renderSize = surface.RenderSize;
 
-        // Update OpenGL data
         UpdateOpenGlData(renderSize);
 
-        // The passes are layered on a target of their own, unless there is only one
+        // Passes are layered on a target of their own, unless there is only one
         var passCount = drawDataProvider.PassCount;
+
+        // Passes that later draws use
+        if (passOutputUsed.Length < passCount)
+            passOutputUsed = new bool[Math.Max(passCount, passOutputUsed.Length * 2)];
+        Array.Clear(passOutputUsed);
+        RenderUtil.ValidatePassTextures(drawDataProvider, passOutputUsed);
         var layered = passCount > 1;
         if (layered)
         {
@@ -432,16 +441,19 @@ public class Renderer : IRenderer, IDisposable
                 GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, currentFboSize.X, currentFboSize.Y);
             }
 
-            // Nothing is there to start with
             blend.Clear(currentFboSize, compositeTextureHandle);
         }
 
         var finalTexture = postProcessTextureHandle1;
         for (var passIndex = 0; passIndex < passCount; passIndex++)
         {
-            var passTexture = RenderPass(drawDataProvider.CreateDrawData(passIndex), renderSize, layered);
+            var passData = drawDataProvider.CreateDrawData(passIndex);
+            var passTexture = RenderPass(passData, renderSize, layered);
+            if (passOutputUsed[passIndex])
+                KeepPassOutput(passIndex, passTexture);
+
             if (layered)
-                blend.Process(currentFboSize, passTexture, compositeTextureHandle);
+                blend.Process(currentFboSize, passTexture, compositeTextureHandle, passData.Opacity);
             else
                 finalTexture = passTexture;
         }
@@ -449,40 +461,114 @@ public class Renderer : IRenderer, IDisposable
         if (layered)
             finalTexture = compositeTextureHandle;
 
-        // The post-processing of the frame as a whole, on what the passes came to
         if (drawDataProvider.FinalPostProcessingState is { } finalState)
         {
             var spareTexture = finalTexture == postProcessTextureHandle1 ? postProcessTextureHandle2 : postProcessTextureHandle1;
             finalTexture = HandlePostProcessing(finalState, finalTexture, spareTexture);
         }
 
-        // Present to window
-        surface.Present(finalTexture, renderSize, new ColorRgba());
+        if (frameReceiver != null)
+        {
+            frameReadback ??= new FrameReadback();
+            frameReceiver.ReceiveFrame(frameReadback.Read(finalTexture, renderSize), renderSize);
+        }
+
+        Present(finalTexture, renderSize);
     }
 
-    /// <summary>
-    /// Draws a pass and does its post-processing. Returns the texture that has the result, which is one of the post-processing textures.
-    /// </summary>
+    /// <summary>Copies what a pass drew to a texture of its own for later passes, turned over so the first row is the top.</summary>
+    private void KeepPassOutput(int passIndex, int sourceTexture)
+    {
+        passTextures.EnsureCount(passIndex + 1);
+        if (passTextures[passIndex] is not { } info)
+        {
+            var handle = GL.GenTexture();
+            GL.BindTexture(TextureTarget.Texture2d, handle);
+            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, currentFboSize.X, currentFboSize.Y);
+            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, (int) All.Linear);
+            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, (int) All.Linear);
+            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureWrapS, (int) All.ClampToEdge);
+            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureWrapT, (int) All.ClampToEdge);
+
+            passTextures[passIndex] = info = new TextureInfo { Handle = handle };
+        }
+
+        if (passCopyReadFramebufferHandle == 0)
+        {
+            passCopyReadFramebufferHandle = GL.GenFramebuffer();
+            passCopyDrawFramebufferHandle = GL.GenFramebuffer();
+        }
+
+        GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, passCopyReadFramebufferHandle);
+        GL.FramebufferTexture2D(FramebufferTarget.ReadFramebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, sourceTexture, 0);
+        GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, passCopyDrawFramebufferHandle);
+        GL.FramebufferTexture2D(FramebufferTarget.DrawFramebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, info.Handle, 0);
+
+        // (A clip of the pass would cut the copy)
+        GL.Disable(EnableCap.ScissorTest);
+        GL.BlitFramebuffer(
+            0, 0, currentFboSize.X, currentFboSize.Y,
+            0, currentFboSize.Y, currentFboSize.X, 0,
+            ClearBufferMask.ColorBufferBit,
+            BlitFramebufferFilter.Nearest);
+    }
+
+    /// <summary>Puts the frame in the surface's framebuffer, centered, and has the surface show it.</summary>
+    private void Present(int texture, Vector2i size)
+    {
+        if (presentFramebufferHandle == 0)
+            presentFramebufferHandle = GL.GenFramebuffer();
+
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, presentFramebufferHandle);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, texture, 0);
+
+        var framebufferSize = surface.FramebufferSize;
+        var offset = (framebufferSize - size) / 2;
+
+        GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, presentFramebufferHandle);
+        GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, surface.Framebuffer);
+
+        // (The clip of the last pass would clip this as well)
+        GL.Disable(EnableCap.ScissorTest);
+
+        if (framebufferSize != size)
+        {
+            GL.ClearColor(0f, 0f, 0f, 0f);
+            GL.Viewport(0, 0, framebufferSize.X, framebufferSize.Y);
+            GL.Clear(ClearBufferMask.ColorBufferBit);
+        }
+
+        GL.BlitFramebuffer(
+            0, 0, size.X, size.Y,
+            offset.X, offset.Y, offset.X + size.X, offset.Y + size.Y,
+            ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Nearest);
+
+        surface.SwapBuffers();
+    }
+
+    /// <summary>Draws a pass and post-processes it. Returns the texture with the result (one of the post-processing textures).</summary>
     private int RenderPass(in DrawData drawData, Vector2i renderSize, bool layered)
     {
-        // Get camera matrix (view and projection)
-        var camera = RenderUtil.GetCameraMatrix(drawData.CameraState, renderSize);
+        var camera = drawData.ViewMatrix;
 
-        // Split draw list into opaque and transparent
+        // A pass that is drawn in a part of the target is drawn as if the target were that part
+        var viewport = drawData.Viewport;
+        passViewport = viewport;
+
         opaqueDrawCommands.Clear();
         transparentDrawCommands.Clear();
 
         var currentDepthInt = 0;
         foreach (var drawCommand in drawData.DrawCommands)
         {
-            // Add to appropriate list
             if (RenderUtil.ShouldUseTransparentDrawList(drawCommand, drawData))
             {
                 transparentDrawCommands.Add(new DrawCommandWithDepth
                 {
                     DrawType = drawCommand.DrawType,
                     DrawId = drawCommand.DrawId,
-                    Depth = currentDepthInt / (float)(1 << 23)
+                    Depth = currentDepthInt / (float)(1 << 23),
+                    Clip = drawCommand.Clip
                 });
             }
             else
@@ -491,27 +577,24 @@ public class Renderer : IRenderer, IDisposable
                 {
                     DrawType = drawCommand.DrawType,
                     DrawId = drawCommand.DrawId,
-                    Depth = currentDepthInt / (float)(1 << 23)
+                    Depth = currentDepthInt / (float)(1 << 23),
+                    Clip = drawCommand.Clip
                 });
             }
 
             currentDepthInt++;
         }
 
-        // Reverse opaque draw data list so that it is drawn
-        // from back to front to avoid overdraw
+        // Opaque draws are reversed to avoid overdraw
         opaqueDrawCommands.Reverse();
 
-        // Bind FBO
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, fboHandle);
 
-        // Get rid of samplers
         GL.BindSampler(0, 0);
         GL.BindSampler(1, 0);
         GL.BindSampler(2, 0);
         GL.BindSampler(3, 0);
 
-        // Bind the four TMPX texture buffers to texture units 0-3
         GL.ActiveTexture(TextureUnit.Texture0);
         GL.BindTexture(TextureTarget.Texture2d, fontCurvesTextureHandle);
 
@@ -525,45 +608,53 @@ public class Renderer : IRenderer, IDisposable
         GL.BindTexture(TextureTarget.Texture2d, fontShapeEntriesTextureHandle);
 
         // Clear the screen. The target holds premultiplied colors, and so does what it is cleared to
-        GL.Viewport(0, 0, renderSize.X, renderSize.Y);
         var clearColor = drawData.ClearColor;
-        GL.ClearColor(clearColor.R * clearColor.A, clearColor.G * clearColor.A, clearColor.B * clearColor.A, clearColor.A);
         GL.ClearDepthf(0.0f);
-        GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+        GL.Disable(EnableCap.ScissorTest);
+        if (viewport.Enabled)
+        {
+            GL.Viewport(viewport.X, currentFboSize.Y - viewport.Bottom, viewport.Width, viewport.Height);
 
-        // Set depth function
+            // What is outside the part is nothing, and the part is what it is cleared to
+            GL.ClearColor(0f, 0f, 0f, 0f);
+            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+            ApplyClip(default);
+            GL.ClearColor(clearColor.R * clearColor.A, clearColor.G * clearColor.A, clearColor.B * clearColor.A, clearColor.A);
+            GL.Clear(ClearBufferMask.ColorBufferBit);
+            GL.Disable(EnableCap.ScissorTest);
+        }
+        else
+        {
+            GL.Viewport(0, 0, renderSize.X, renderSize.Y);
+            GL.ClearColor(clearColor.R * clearColor.A, clearColor.G * clearColor.A, clearColor.B * clearColor.A, clearColor.A);
+            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+        }
+
         GL.DepthFunc(DepthFunction.Greater);
 
-        // Opaque pass, disable blending, enable depth testing
         GL.Disable(EnableCap.Blend);
         GL.Enable(EnableCap.DepthTest);
 
-        // Draw each mesh
         RenderDrawDataList(
             CollectionsMarshal.AsSpan(opaqueDrawCommands),
             drawData,
             camera);
 
-        // Transparent pass, enable blending, disable depth write
-        // The shaders output premultiplied alpha
+        // Transparent draws blend; the shaders output premultiplied alpha
         GL.BlendFunc(BlendingFactor.One, BlendingFactor.OneMinusSrcAlpha);
         GL.Enable(EnableCap.Blend);
         GL.DepthMask(false);
 
-        // Draw each mesh
         RenderDrawDataList(
             CollectionsMarshal.AsSpan(transparentDrawCommands),
             drawData,
             camera);
 
-        // Restore depth write state
         GL.DepthMask(true);
 
-        // Bind texture 1 to post-process FBO
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, postProcessFboHandle);
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, postProcessTextureHandle1, 0);
 
-        // Blit FBO to post-process FBO
         GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, fboHandle);
         GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, postProcessFboHandle);
         GL.BlitFramebuffer(
@@ -574,14 +665,12 @@ public class Renderer : IRenderer, IDisposable
             ClearBufferMask.ColorBufferBit,
             BlitFramebufferFilter.Nearest);
 
-        // Process post-process effects
-        // The passes of a layered frame that have no effects to finish with are left as they are, as the frame has them
+        // (Passes of a layered frame with no effects are left as they are)
         return HandlePostProcessing(drawData.PostProcessingState, postProcessTextureHandle1, postProcessTextureHandle2, skipIfNoFinalEffects: layered);
     }
 
     private int HandlePostProcessing(PostProcessingState state, int texture1, int texture2, bool skipIfNoFinalEffects = false)
     {
-        // Disable depth testing and blending
         GL.Disable(EnableCap.DepthTest);
         GL.Disable(EnableCap.Blend);
 
@@ -621,12 +710,15 @@ public class Renderer : IRenderer, IDisposable
         var meshInfosSpan = CollectionsMarshal.AsSpan(meshInfos);
         var textInfosSpan = CollectionsMarshal.AsSpan(textInfos);
 
-        // The draws that can be drawn with the textures bound together make a page
+        // Draws that can be drawn with the same bound textures make a page
         texturePager.Plan(drawData, drawCommands, texturePageSize);
         UploadMeshInstances(drawData, drawCommands, camera);
 
         // Where the next batch's items start in the instance buffer, counted in items
         var instanceOffset = 0;
+
+        var clip = default(ClipRect);
+        ApplyClip(clip);
 
         foreach (var page in texturePager.Pages)
         {
@@ -637,6 +729,12 @@ public class Renderer : IRenderer, IDisposable
             {
                 ref var drawCommand = ref drawCommands[i];
 
+                if (drawCommand.Clip != clip)
+                {
+                    clip = drawCommand.Clip;
+                    ApplyClip(clip);
+                }
+
                 switch (drawCommand.DrawType)
                 {
                     case DrawType.Mesh:
@@ -646,7 +744,8 @@ public class Renderer : IRenderer, IDisposable
                         var batchEnd = i + 1;
                         while (batchEnd < pageEnd &&
                                drawCommands[batchEnd].DrawType == DrawType.Mesh &&
-                               drawData.MeshDrawItems[drawCommands[batchEnd].DrawId].MeshHandle.Id == meshHandleId)
+                               drawData.MeshDrawItems[drawCommands[batchEnd].DrawId].MeshHandle.Id == meshHandleId &&
+                               drawCommands[batchEnd].Clip == clip)
                             batchEnd++;
 
                         var instanceCount = batchEnd - i;
@@ -675,7 +774,7 @@ public class Renderer : IRenderer, IDisposable
                         GL.Uniform4f(glyphBaseColorUniformLocation,
                             textDrawItem.Color.R, textDrawItem.Color.G,
                             textDrawItem.Color.B, textDrawItem.Color.A);
-                        GL.Uniform2f(glyphViewportSizeUniformLocation, currentFboSize.X, currentFboSize.Y);
+                        GL.Uniform2f(glyphViewportSizeUniformLocation, passViewport.Enabled ? passViewport.Width : currentFboSize.X, passViewport.Enabled ? passViewport.Height : currentFboSize.Y);
 
                         GL.BindVertexArray(textVertexArrayHandle);
                         GL.BindBuffer(BufferTarget.ArrayBuffer, textInstanceBufferHandle);
@@ -695,25 +794,53 @@ public class Renderer : IRenderer, IDisposable
                 }
             }
         }
+
+        GL.Disable(EnableCap.ScissorTest);
     }
 
-    /// <summary>
-    /// Binds the textures of a page to their slots' units.
-    /// </summary>
+    /// <summary>Cuts what is drawn next to <paramref name="clip"/>, or stops cutting if there is none.</summary>
+    private void ApplyClip(ClipRect clip)
+    {
+        // The part of the target the pass is in: its clip is in pixels of that part, and nothing shows outside it
+        var viewport = passViewport;
+        if (!clip.Enabled)
+        {
+            if (!viewport.Enabled)
+            {
+                GL.Disable(EnableCap.ScissorTest);
+                return;
+            }
+
+            clip = new ClipRect(0, 0, viewport.Width, viewport.Height);
+        }
+
+        var originX = viewport.Enabled ? viewport.X : 0;
+        var originY = viewport.Enabled ? viewport.Y : 0;
+        var width = viewport.Enabled ? viewport.Width : currentFboSize.X;
+        var height = viewport.Enabled ? viewport.Height : currentFboSize.Y;
+        var left = Math.Clamp(clip.X, 0, width);
+        var top = Math.Clamp(clip.Y, 0, height);
+        var right = Math.Clamp(clip.Right, left, width);
+        var bottom = Math.Clamp(clip.Bottom, top, height);
+
+        // The origin of the scissor box is the bottom-left corner
+        GL.Enable(EnableCap.ScissorTest);
+        GL.Scissor(originX + left, currentFboSize.Y - (originY + bottom), right - left, bottom - top);
+    }
+
+    /// <summary>Binds the textures of a page to their slots' units.</summary>
     private void BindTexturePage(in TexturePage page)
     {
         var textures = texturePager.TexturesOf(page);
         for (var slot = 0; slot < textures.Length; slot++)
         {
             GL.ActiveTexture((TextureUnit) ((int) TextureUnit.Texture0 + FirstTextureSlotUnit + slot));
-            var info = textures[slot] < textureInfos.Count ? textureInfos[textures[slot]] : null;
+            var info = FindTexture(textures[slot]);
             GL.BindTexture(TextureTarget.Texture2d, info?.Handle ?? 0);
         }
     }
 
-    /// <summary>
-    /// Puts the draw item of every mesh of the list in the instance buffer, in the order they are drawn.
-    /// </summary>
+    /// <summary>Puts the draw item of every mesh in the instance buffer, in draw order.</summary>
     private void UploadMeshInstances(in DrawData drawData, in Span<DrawCommandWithDepth> drawCommands, in Matrix3x2 camera)
     {
         var count = 0;
@@ -729,7 +856,7 @@ public class Renderer : IRenderer, IDisposable
             ref var meshDrawItem = ref drawData.MeshDrawItems[drawCommand.DrawId];
             ref var unlitDrawItem = ref unlitDrawItems[count++];
 
-            var textured = TexturedInfoOf(meshDrawItem, out var crispEdges);
+            var textured = TexturedInfoOf(meshDrawItem.RenderMode == RenderMode.Normal ? meshDrawItem.Texture : TextureHandle.None, out var crispEdges);
             var mvp = meshDrawItem.Transform * camera;
             unlitDrawItem.Mvp1 = new Vector4(mvp.M11, mvp.M12, mvp.M21, mvp.M22);
             unlitDrawItem.Mvp2 = new Vector4(mvp.M31, mvp.M32, drawCommand.Depth, meshDrawItem.GradientRotation);
@@ -760,14 +887,19 @@ public class Renderer : IRenderer, IDisposable
         }
     }
 
-    /// <summary>
-    /// Whether the mesh draw samples a texture that the renderer has, and whether that is with crisp edges.
-    /// </summary>
-    private bool TexturedInfoOf(in MeshDrawItem item, out bool crispEdges)
+    /// <summary>The texture with an id: a texture of the factory or a pass output.</summary>
+    private TextureInfo? FindTexture(int id)
     {
-        var texture = item.Texture;
-        if (item.RenderMode != RenderMode.Normal ||
-            texture.IsNone || texture.Id >= textureInfos.Count || textureInfos[texture.Id] is not { } info)
+        if (TextureHandle.TryGetPassIndex(id, out var passIndex))
+            return passIndex < passTextures.Count ? passTextures[passIndex] : null;
+
+        return id < textureInfos.Count ? textureInfos[id] : null;
+    }
+
+    /// <summary>Whether the mesh draw samples a texture the renderer has, and whether with crisp edges.</summary>
+    private bool TexturedInfoOf(TextureHandle texture, out bool crispEdges)
+    {
+        if (texture.IsNone || FindTexture(texture.Id) is not { } info)
         {
             crispEdges = false;
             return false;
@@ -777,15 +909,28 @@ public class Renderer : IRenderer, IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Draws instances of one mesh, with the draw items that are in the instance buffer from the item at <paramref name="firstInstance"/>.
-    /// </summary>
+    /// <summary>Draws instances of one mesh from the draw items in the instance buffer starting at <paramref name="firstInstance"/>.</summary>
     private void RenderMeshBatch(int firstInstance, int instanceCount, in MeshInfo meshInfo)
     {
         GL.UseProgram(programHandle);
         GL.BindVertexArray(mainVertexArrayHandle);
 
-        // Point the instance attributes at the batch's items (the pointers take the buffer bound now)
+        PointInstanceAttributes(firstInstance);
+
+        GL.DrawElementsInstanced(
+            PrimitiveType.Triangles,
+            meshInfo.IndexCount,
+            DrawElementsType.UnsignedInt,
+            meshInfo.IndexBufferAllocation.Offset * sizeof(uint),
+            instanceCount);
+    }
+
+    /// <summary>Binds the main vertex array and points its instance attributes at the items in the instance buffer from <paramref name="firstInstance"/>.</summary>
+    private void PointInstanceAttributes(int firstInstance)
+    {
+        GL.BindVertexArray(mainVertexArrayHandle);
+
+        // The pointers take the buffer bound now
         var stride = Unsafe.SizeOf<GpuUnlitDrawItem>();
         var baseOffset = firstInstance * stride;
         GL.BindBuffer(BufferTarget.ArrayBuffer, unlitInstanceBuffer);
@@ -797,13 +942,6 @@ public class Renderer : IRenderer, IDisposable
         GL.VertexAttribPointer(7, 4, VertexAttribPointerType.Float, false, stride, baseOffset + 80);   // UvRect
         GL.VertexAttribPointer(8, 1, VertexAttribPointerType.Float, false, stride, baseOffset + 96);   // GradientScale
         GL.VertexAttribIPointer(9, 3, VertexAttribIType.Int, stride, baseOffset + 100);                // TextureSlotIndex, GradientMode and TextureFlags
-
-        GL.DrawElementsInstanced(
-            PrimitiveType.Triangles,
-            meshInfo.IndexCount,
-            DrawElementsType.UnsignedInt,
-            meshInfo.IndexBufferAllocation.Offset * sizeof(uint),
-            instanceCount);
     }
 
     private void UpdateOpenGlData(Vector2i size)
@@ -817,14 +955,12 @@ public class Renderer : IRenderer, IDisposable
     
     private void UpdateMeshData()
     {
-        // Initialize vertex and index buffers if needed
         if (mainVertexBufferHandle == 0)
         {
             mainVertexBufferHandle = GL.GenBuffer();
             GL.BindBuffer(BufferTarget.ArrayBuffer, mainVertexBufferHandle);
             GL.BufferData(BufferTarget.ArrayBuffer, vertexBufferAllocator.Capacity * Unsafe.SizeOf<Vertex>(), IntPtr.Zero, BufferUsage.DynamicDraw);
             
-            // Bind vertex buffer to vertex array
             GL.BindVertexArray(mainVertexArrayHandle);
             GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, Unsafe.SizeOf<Vertex>(), 0);
             GL.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, Unsafe.SizeOf<Vertex>(), 8);
@@ -855,7 +991,6 @@ public class Renderer : IRenderer, IDisposable
 
                     var vtxAlloc = vertexBufferAllocator.Allocate(vertexCount, (oldCapacity, newCapacity) =>
                     {
-                        // Recreate vertex buffer with new capacity
                         var newBufferHandle = GL.GenBuffer();
                         GL.BindBuffer(BufferTarget.ArrayBuffer, newBufferHandle);
                         GL.BufferData(BufferTarget.ArrayBuffer, newCapacity * Unsafe.SizeOf<Vertex>(), IntPtr.Zero, BufferUsage.DynamicDraw);
@@ -866,7 +1001,6 @@ public class Renderer : IRenderer, IDisposable
                         GL.DeleteBuffer(mainVertexBufferHandle);
                         mainVertexBufferHandle = newBufferHandle;
                         
-                        // Bind new vertex buffer to vertex array
                         GL.BindVertexArray(mainVertexArrayHandle);
                         GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, Unsafe.SizeOf<Vertex>(), 0);
                         GL.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, Unsafe.SizeOf<Vertex>(), 8);
@@ -879,7 +1013,6 @@ public class Renderer : IRenderer, IDisposable
                         // Make sure we don't randomly bind another VAO to this index buffer
                         GL.BindVertexArray(mainVertexArrayHandle);
                         
-                        // Recreate index buffer with new capacity
                         var newBufferHandle = GL.GenBuffer();
                         GL.BindBuffer(BufferTarget.ElementArrayBuffer, newBufferHandle);
                         GL.BufferData(BufferTarget.ElementArrayBuffer, newCapacity * sizeof(int), IntPtr.Zero, BufferUsage.DynamicDraw);
@@ -893,15 +1026,12 @@ public class Renderer : IRenderer, IDisposable
                         logger.LogInformation("Mesh index buffer reallocated from {OldCapacity} to {NewCapacity}", oldCapacity, newCapacity);
                     });
                     
-                    // Offset indices
                     for (var i = 0; i < indices.Length; i++)
                         indices[i] += vtxAlloc.Offset;
                     
-                    // Upload vertex data
                     GL.BindBuffer(BufferTarget.ArrayBuffer, mainVertexBufferHandle);
                     GL.BufferSubData(BufferTarget.ArrayBuffer, vtxAlloc.Offset * Unsafe.SizeOf<Vertex>(), vertexCount * Unsafe.SizeOf<Vertex>(), vertices);
                     
-                    // Upload index data
                     GL.BindBuffer(BufferTarget.ElementArrayBuffer, mainIndexBufferHandle);
                     GL.BufferSubData(BufferTarget.ElementArrayBuffer, idxAlloc.Offset * sizeof(int), indexCount * sizeof(int), indices);
 
@@ -943,7 +1073,6 @@ public class Renderer : IRenderer, IDisposable
                     GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba8, width, height);
                     GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, width, height, PixelFormat.Rgba, PixelType.UnsignedByte, pixelData);
 
-                    // The sampling is the texture's own
                     GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, GetFilter(sampling.MinificationFilter));
                     GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, GetFilter(sampling.MagnificationFilter));
                     GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureWrapS, GetWrapMode(sampling.WrapModeU));
@@ -1003,107 +1132,103 @@ public class Renderer : IRenderer, IDisposable
         
         fontBuffersDirty = false;
         
-        // Upload curves buffer
         if (fontCurvesTextureHandle != 0)
         {
             GL.DeleteTexture(fontCurvesTextureHandle);
             fontCurvesTextureHandle = 0;
         }
         
-        if (renderingFactory.FontCurves.Length > 0)
+        if (resources.FontCurves.Length > 0)
         {
             fontCurvesTextureHandle = GL.GenTexture();
             GL.BindTexture(TextureTarget.Texture2d, fontCurvesTextureHandle);
             
             // each curve takes exactly 3 texels
             var texWidth = FontTextureWidth;
-            var texHeight = (renderingFactory.FontCurves.Length * 3 + FontTextureWidth - 1) / FontTextureWidth; // Round up division
+            var texHeight = (resources.FontCurves.Length * 3 + FontTextureWidth - 1) / FontTextureWidth; // Round up division
             GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rg32f, texWidth, texHeight);
             GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
             GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
 
             var bufSize = texWidth * texHeight * 2 * sizeof(float);
             var buf = new byte[bufSize];
-            var fontCurvesSpan = MemoryMarshal.AsBytes(renderingFactory.FontCurves);
+            var fontCurvesSpan = MemoryMarshal.AsBytes(resources.FontCurves);
             fontCurvesSpan.CopyTo(buf);
             
             GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, texWidth, texHeight, PixelFormat.Rg, PixelType.Float, buf); 
         }
         
-        // Upload curve indices buffer
         if (fontCurveIndicesTextureHandle != 0)
         {
             GL.DeleteTexture(fontCurveIndicesTextureHandle);
             fontCurveIndicesTextureHandle = 0;
         }
 
-        if (renderingFactory.FontCurveIndices.Length > 0)
+        if (resources.FontCurveIndices.Length > 0)
         {
             fontCurveIndicesTextureHandle = GL.GenTexture();
             GL.BindTexture(TextureTarget.Texture2d, fontCurveIndicesTextureHandle);
 
             // each curve index takes exactly 1 texel
             var texWidth = FontTextureWidth;
-            var texHeight = (renderingFactory.FontCurveIndices.Length + FontTextureWidth - 1) / FontTextureWidth; // Round up division
+            var texHeight = (resources.FontCurveIndices.Length + FontTextureWidth - 1) / FontTextureWidth; // Round up division
             GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.R32i, texWidth, texHeight);
             GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
             GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
             
             var bufSize = texWidth * texHeight * sizeof(int);
             var buf = new byte[bufSize];
-            var fontCurveIndicesSpan = MemoryMarshal.AsBytes(renderingFactory.FontCurveIndices);
+            var fontCurveIndicesSpan = MemoryMarshal.AsBytes(resources.FontCurveIndices);
             fontCurveIndicesSpan.CopyTo(buf);
             
             GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, texWidth, texHeight, PixelFormat.RedInteger, PixelType.Int, buf);
         }
         
-        // Upload band entries buffer
         if (fontBandEntriesTextureHandle != 0)
         {
             GL.DeleteTexture(fontBandEntriesTextureHandle);
             fontBandEntriesTextureHandle = 0;
         }
         
-        if (renderingFactory.FontBandEntries.Length > 0)
+        if (resources.FontBandEntries.Length > 0)
         {
             fontBandEntriesTextureHandle = GL.GenTexture();
             GL.BindTexture(TextureTarget.Texture2d, fontBandEntriesTextureHandle);
             
             // each band entry takes exactly 1 texel
             var texWidth = FontTextureWidth;
-            var texHeight = (renderingFactory.FontBandEntries.Length + FontTextureWidth - 1) / FontTextureWidth; // Round up division
+            var texHeight = (resources.FontBandEntries.Length + FontTextureWidth - 1) / FontTextureWidth; // Round up division
             GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rg32i, texWidth, texHeight);
             GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
             GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
             
             var bufSize = texWidth * texHeight * 2 * sizeof(int);
             var buf = new byte[bufSize];
-            var fontBandEntriesSpan = MemoryMarshal.AsBytes(renderingFactory.FontBandEntries);
+            var fontBandEntriesSpan = MemoryMarshal.AsBytes(resources.FontBandEntries);
             fontBandEntriesSpan.CopyTo(buf);
             
             GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, texWidth, texHeight, PixelFormat.RgInteger, PixelType.Int, buf);
         }
         
-        // Upload shape entries buffer
         if (fontShapeEntriesTextureHandle != 0)
         {
             GL.DeleteTexture(fontShapeEntriesTextureHandle);
             fontShapeEntriesTextureHandle = 0;
         }
 
-        if (renderingFactory.FontShapeEntries.Length > 0)
+        if (resources.FontShapeEntries.Length > 0)
         {
             fontShapeEntriesTextureHandle = GL.GenTexture();
             GL.BindTexture(TextureTarget.Texture2d, fontShapeEntriesTextureHandle);
 
             // each shape entry takes exactly 4 texel
             var texWidth = FontTextureWidth;
-            var texHeight = (renderingFactory.FontShapeEntries.Length * 4 + FontTextureWidth - 1) / FontTextureWidth; // Round up division
+            var texHeight = (resources.FontShapeEntries.Length * 4 + FontTextureWidth - 1) / FontTextureWidth; // Round up division
             GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba32ui, texWidth, texHeight);
             GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
             GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
             
-            var gpuShapeEntries = renderingFactory.FontShapeEntries.Select(x => new GpuShapeEntry
+            var gpuShapeEntries = resources.FontShapeEntries.Select(x => new GpuShapeEntry
             {
                 HorizontalBandEntryBaseIndex = x.HorizontalBandEntryBaseIndex,
                 HorizontalBandEntryCount = x.HorizontalBandEntryCount,
@@ -1128,10 +1253,10 @@ public class Renderer : IRenderer, IDisposable
 
         logger.LogInformation(
             "Font buffers updated, registered {Curves} curves, {CurveIndices} curve indices, {Bands} band entries, {Shapes} shape entries",
-            renderingFactory.FontCurves.Length,
-            renderingFactory.FontCurveIndices.Length,
-            renderingFactory.FontBandEntries.Length,
-            renderingFactory.FontShapeEntries.Length);
+            resources.FontCurves.Length,
+            resources.FontCurveIndices.Length,
+            resources.FontBandEntries.Length,
+            resources.FontShapeEntries.Length);
     }
 
     private void UpdateTextData()
@@ -1154,7 +1279,6 @@ public class Renderer : IRenderer, IDisposable
 
                     var glyphAlloc = glyphBufferAllocator.Allocate(renderGlyphs.Length, (oldCapacity, newCapacity) =>
                     {
-                        // Recreate glyph buffer with new capacity
                         var newBufferHandle = GL.GenBuffer();
                         GL.BindBuffer(BufferTarget.ArrayBuffer, newBufferHandle);
                         GL.BufferData(BufferTarget.ArrayBuffer, newCapacity * Unsafe.SizeOf<RenderGlyph>(), IntPtr.Zero, BufferUsage.DynamicDraw);
@@ -1169,11 +1293,9 @@ public class Renderer : IRenderer, IDisposable
                         logger.LogInformation("Glyph buffer reallocated from {OldCapacity} to {NewCapacity}", oldCapacity, newCapacity);
                     });
 
-                    // Upload glyph data
                     GL.BindBuffer(BufferTarget.ArrayBuffer, textInstanceBufferHandle);
                     GL.BufferSubData(BufferTarget.ArrayBuffer, glyphAlloc.Offset * Unsafe.SizeOf<RenderGlyph>(), renderGlyphs.Length * Unsafe.SizeOf<RenderGlyph>(), renderGlyphs);
                     
-                    // Store text info
                     textInfos.EnsureCount(command.Id + 1);
                     textInfos[command.Id] = new TextInfo
                     {
@@ -1201,11 +1323,9 @@ public class Renderer : IRenderer, IDisposable
         if (size.X * size.Y == 0)
             return;
         
-        // Delete old FBO data
         GL.DeleteRenderbuffer(fboColorBufferHandle);
         GL.DeleteRenderbuffer(fboDepthBufferHandle);
         
-        // Create new FBO data
         fboColorBufferHandle = GL.GenRenderbuffer();
         GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, fboColorBufferHandle);
         GL.RenderbufferStorageMultisample(RenderbufferTarget.Renderbuffer, MsaaSamples, InternalFormat.Rgba16f, size.X, size.Y);
@@ -1214,20 +1334,18 @@ public class Renderer : IRenderer, IDisposable
         GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, fboDepthBufferHandle);
         GL.RenderbufferStorageMultisample(RenderbufferTarget.Renderbuffer, MsaaSamples, InternalFormat.DepthComponent32f, size.X, size.Y);
         
-        // Bind new data to FBO
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, fboHandle);
         GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, RenderbufferTarget.Renderbuffer, fboColorBufferHandle);
         GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment, RenderbufferTarget.Renderbuffer, fboDepthBufferHandle);        
         
-        // Delete old post-process FBO data
         GL.DeleteTexture(postProcessTextureHandle1);
         GL.DeleteTexture(postProcessTextureHandle2);
         
-        // The composite texture is made again when it is needed
+        // The composite texture and the textures of the passes are made again when they are needed
         GL.DeleteTexture(compositeTextureHandle);
         compositeTextureHandle = 0;
+        DeletePassTextures();
         
-        // Create new post-process FBO data
         postProcessTextureHandle1 = GL.GenTexture();
         GL.BindTexture(TextureTarget.Texture2d, postProcessTextureHandle1);
         GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);

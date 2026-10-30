@@ -1,6 +1,5 @@
 using OpenTK.Graphics.OpenGL;
 using System.Numerics;
-using Pamx.Events;
 using Ralsei.Core;
 using Ralsei.Core.Data;
 using Ralsei.Mathematics;
@@ -9,7 +8,7 @@ using Ralsei.Rendering.Data;
 
 namespace Ralsei.Rendering.OpenGL.PostProcessing;
 
-public class UberPost : IDisposable
+internal class UberPost : IDisposable
 {
     private readonly int program;
     
@@ -39,7 +38,6 @@ public class UberPost : IDisposable
     {
         program = LoaderUtil.LoadComputeProgram(loader, "PostProcessing/UberPost");
         
-        // Get uniform locations
         hueShiftAngleUniformLocation = GL.GetUniformLocation(program, "uHueShiftAngle");
         
         lensDistortionIntensityUniformLocation = GL.GetUniformLocation(program, "uLensDistortionIntensity");
@@ -60,7 +58,6 @@ public class UberPost : IDisposable
         gradientRotationUniformLocation = GL.GetUniformLocation(program, "uGradientRotation");
         gradientModeUniformLocation = GL.GetUniformLocation(program, "uGradientMode");
         
-        // Initialize sampler
         sampler = GL.CreateSampler();
         GL.SamplerParameteri(sampler, SamplerParameterI.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
         GL.SamplerParameteri(sampler, SamplerParameterI.TextureWrapT, (int)TextureWrapMode.ClampToEdge);

@@ -122,7 +122,7 @@ void main() {
         MeshDrawItem mesh = meshDrawItems[item.drawId + RALSEI_INSTANCE_INDEX];
         if (mesh.renderMode != 0) {
             // A gradient runs over the mesh's own coordinates, turned and stretched as the object asks.
-            vTexCoord = gradientUv(aUv, mesh.gradientRotation, mesh.gradientScale);
+            vTexCoord = gradientUv(aPos, mesh.gradientRotation, mesh.gradientScale);
         } else {
             vTexCoord = mix(mesh.minUV, mesh.maxUV, aUv);
             vTexture = textureRef(mesh.texture0, mesh.texture1);

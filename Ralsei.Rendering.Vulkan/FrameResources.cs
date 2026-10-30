@@ -2,10 +2,7 @@ using OpenTK.Graphics.Vulkan;
 
 namespace Ralsei.Rendering.Vulkan;
 
-/// <summary>
-/// Everything that is needed to record and submit one frame, and that can't be shared between
-/// frames that are in flight at the same time. The renderer cycles through a few of these.
-/// </summary>
+/// <summary>What one frame needs to be recorded and submitted that can't be shared with frames in flight; the renderer cycles through a few.</summary>
 internal sealed unsafe class FrameResources : IDisposable
 {
     private const uint MaxDescriptorSets = 512;
@@ -79,7 +76,7 @@ internal sealed unsafe class FrameResources : IDisposable
         {
             new VkDescriptorPoolSize { type = VkDescriptorType.DescriptorTypeCombinedImageSampler, descriptorCount = MaxDescriptorSets * 16 },
             new VkDescriptorPoolSize { type = VkDescriptorType.DescriptorTypeStorageImage, descriptorCount = MaxDescriptorSets },
-            new VkDescriptorPoolSize { type = VkDescriptorType.DescriptorTypeStorageBuffer, descriptorCount = 64 }
+            new VkDescriptorPoolSize { type = VkDescriptorType.DescriptorTypeStorageBuffer, descriptorCount = 128 }
         };
         var descriptorPoolInfo = new VkDescriptorPoolCreateInfo
         {
@@ -110,20 +107,14 @@ internal sealed unsafe class FrameResources : IDisposable
         Vk.DestroyCommandPool(device, commandPool, null);
     }
 
-    /// <summary>
-    /// Blocks until the GPU has finished the last submission of this frame. Once this returns,
-    /// everything the frame used can be recycled.
-    /// </summary>
+    /// <summary>Blocks until the GPU is done with this frame's last submission, after which its resources can be recycled.</summary>
     public void WaitForCompletion()
     {
         var fence = Fence;
         VkUtil.Check(Vk.WaitForFences(Context.Device, 1, &fence, VkUtil.True, ulong.MaxValue), "vkWaitForFences");
     }
 
-    /// <summary>
-    /// Recycles the frame's resources and starts recording its command buffer. Must only be called
-    /// after <see cref="WaitForCompletion"/>, and only if the frame is going to be submitted.
-    /// </summary>
+    /// <summary>Recycles the frame's resources and starts recording. Call after <see cref="WaitForCompletion"/>, and only if the frame will be submitted.</summary>
     public void Begin()
     {
         var fence = Fence;
@@ -158,10 +149,7 @@ internal sealed unsafe class FrameResources : IDisposable
         VkUtil.Check(Vk.EndCommandBuffer(Cmd), "vkEndCommandBuffer");
     }
 
-    /// <summary>
-    /// Queues a resource for destruction once the GPU is done with this frame. Resources that earlier
-    /// frames might still be using must be released this way, as it can take several frames to get here.
-    /// </summary>
+    /// <summary>Queues a resource for destruction once the GPU is done with this frame. Anything earlier frames might still use has to go this way.</summary>
     public void Defer(IDisposable resource)
     {
         garbage.Add(resource);
@@ -238,10 +226,7 @@ internal sealed unsafe class FrameResources : IDisposable
         HasPendingBufferUploads = true;
     }
 
-    /// <summary>
-    /// Copies the contents of <paramref name="source"/> into <paramref name="destination"/>, which
-    /// has to be larger than or as large as <paramref name="byteCount"/>.
-    /// </summary>
+    /// <summary>Copies the contents of <paramref name="source"/> into <paramref name="destination"/>, which must hold <paramref name="byteCount"/> bytes.</summary>
     public void CopyBuffer(GpuBuffer source, GpuBuffer destination, ulong byteCount)
     {
         var region = new VkBufferCopy { srcOffset = 0, dstOffset = 0, size = byteCount };
@@ -249,10 +234,7 @@ internal sealed unsafe class FrameResources : IDisposable
         HasPendingBufferUploads = true;
     }
 
-    /// <summary>
-    /// Replaces the whole contents of an image that is kept in the general layout, and makes the
-    /// new contents visible to compute shaders.
-    /// </summary>
+    /// <summary>Replaces the contents of an image kept in the general layout and makes them visible to compute shaders.</summary>
     public void UploadToImage(GpuImage destination, ReadOnlySpan<byte> data)
     {
         var staging = Staging.Allocate((ulong) data.Length);
@@ -274,9 +256,7 @@ internal sealed unsafe class FrameResources : IDisposable
             VkPipelineStageFlagBits2.PipelineStage2ComputeShaderBit, VkAccessFlagBits2.Access2ShaderReadBit));
     }
 
-    /// <summary>
-    /// Fills a texture that was just created, and leaves it in the layout that fragment shaders sample it in.
-    /// </summary>
+    /// <summary>Fills a just-created texture and leaves it in the layout fragment shaders sample it in.</summary>
     public void UploadTexture(GpuImage destination, ReadOnlySpan<byte> data)
     {
         var staging = Staging.Allocate((ulong) data.Length);
@@ -303,9 +283,7 @@ internal sealed unsafe class FrameResources : IDisposable
             VkPipelineStageFlagBits2.PipelineStage2FragmentShaderBit, VkAccessFlagBits2.Access2ShaderReadBit));
     }
 
-    /// <summary>
-    /// Makes all the buffer copies recorded so far visible to the stages that read meshes, text and fonts.
-    /// </summary>
+    /// <summary>Makes the buffer copies recorded so far visible to the stages that read meshes, text and fonts.</summary>
     public void FlushBufferUploads()
     {
         if (!HasPendingBufferUploads)
@@ -322,9 +300,7 @@ internal sealed unsafe class FrameResources : IDisposable
         HasPendingBufferUploads = false;
     }
 
-    /// <summary>
-    /// Orders buffer copies against copies that come after them, for when they might touch the same bytes.
-    /// </summary>
+    /// <summary>Orders buffer copies against later copies that might touch the same bytes.</summary>
     public void TransferBarrier()
     {
         VkUtil.PipelineBarrier(Cmd, VkUtil.MemoryBarrier(
@@ -337,10 +313,7 @@ internal sealed unsafe class FrameResources : IDisposable
 
     #region Compute
 
-    /// <summary>
-    /// The equivalent of glMemoryBarrier between compute passes: results written by the previous
-    /// pass can be read (through textures or images) by the next one.
-    /// </summary>
+    /// <summary>The equivalent of glMemoryBarrier between compute passes.</summary>
     /// <remarks>
     /// This deliberately uses the general SHADER_READ and SHADER_WRITE accesses. The more specific
     /// SHADER_STORAGE_WRITE as the source access did not make the writes of one pass visible to the next one reliably

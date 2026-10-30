@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>14</LangVersion>
+    <RootNamespace>Swag</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The themes, read through the engine's resource loader (see EmbeddedResourceSource): Resources/Themes/Classic.vgt -->
+    <EmbeddedResource Include="Resources/**/*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Pamx/Pamx/Pamx.csproj" />
+    <ProjectReference Include="../Ralsei/Ralsei.csproj" />
+  </ItemGroup>
+
+</Project>

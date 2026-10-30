@@ -6,10 +6,7 @@ internal readonly record struct Macro(bool IsFunctionLike, string Body);
 
 internal sealed class ConditionException(string message) : Exception(message);
 
-/// <summary>
-/// Evaluates the expression of an #if or #elif the way a C preprocessor does: macros are expanded,
-/// defined() is resolved, and what is left is evaluated as an integer expression.
-/// </summary>
+/// <summary>Evaluates the expression of an #if or #elif like a C preprocessor: macros are expanded, defined() is resolved, the rest is an integer expression.</summary>
 internal static class ConditionEvaluator
 {
     private enum TokenKind { Number, Identifier, Punctuator }
@@ -17,9 +14,7 @@ internal static class ConditionEvaluator
     private readonly record struct Token(TokenKind Kind, string Text, long Value = 0);
 
     /// <param name="lookup">Finds a macro by name.</param>
-    /// <param name="isKnownUndefined">
-    /// Whether a compiler macro (see <see cref="ThrowIfCompilerMacro"/>) is certain to be undefined, e.g. GL_ES in a desktop shader.
-    /// </param>
+    /// <param name="isKnownUndefined">Whether a compiler macro (see <see cref="ThrowIfCompilerMacro"/>) is certain to be undefined, e.g. GL_ES in a desktop shader.</param>
     public static bool IsTrue(string expression, Func<string, Macro?> lookup, Func<string, bool> isKnownUndefined)
     {
         var tokens = Expand(Tokenize(expression), lookup, isKnownUndefined, []);
@@ -33,10 +28,7 @@ internal static class ConditionEvaluator
         return value != 0;
     }
 
-    /// <summary>
-    /// The compiler defines macros of its own (GL_ARB_..., __LINE__, ...) and the preprocessor can't know which.
-    /// Treating one as undefined would be a silent lie, so asking about one that isn't known is an error.
-    /// </summary>
+    /// <summary>The compiler defines macros of its own (GL_ARB_..., __LINE__) the preprocessor can't know; treating one as undefined would be a silent lie, so asking about an unknown one is an error.</summary>
     public static void ThrowIfCompilerMacro(string name)
     {
         if (name.StartsWith("GL_", StringComparison.Ordinal) || name.StartsWith("__", StringComparison.Ordinal))

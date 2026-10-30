@@ -24,9 +24,7 @@ internal static unsafe class VkUtil
     public static bool Has(this VkSampleCountFlagBits flags, VkSampleCountFlagBits flag)
         => (flags & flag) == flag;
 
-    /// <summary>
-    /// Reads a null-terminated UTF-8 string out of a fixed-size inline array (e.g. VkPhysicalDeviceProperties.deviceName).
-    /// </summary>
+    /// <summary>Reads a null-terminated UTF-8 string out of a fixed-size inline array.</summary>
     public static string ReadString<TArray>(ref TArray array, int length) where TArray : struct
     {
         var bytes = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<TArray, byte>(ref array), length);
@@ -139,9 +137,7 @@ internal static unsafe class VkUtil
     }
 }
 
-/// <summary>
-/// A native array of null-terminated UTF-8 strings, as expected by e.g. ppEnabledExtensionNames.
-/// </summary>
+/// <summary>A native array of null-terminated UTF-8 strings, as expected by e.g. ppEnabledExtensionNames.</summary>
 internal sealed unsafe class Utf8StringArray : IDisposable
 {
     public byte** Pointer { get; }

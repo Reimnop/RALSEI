@@ -24,7 +24,6 @@ public class FontService : IDisposable, IFontResolver
         this.resourceLoader = resourceLoader;
         this.renderingFactory = renderingFactory;
 
-        // Load all fonts
         var inconsolata = LoadFont("Fonts/Inconsolata-Regular.tmpx", FontStyle.Regular);
         LoadFont("Fonts/Inconsolata-Bold.tmpx", FontStyle.Bold);
         LoadFont("Fonts/Inconsolata-Italic.tmpx", FontStyle.Italic);
@@ -64,7 +63,6 @@ public class FontService : IDisposable, IFontResolver
         var seguisym = LoadFont("Fonts/Seguisym-Regular.tmpx", FontStyle.Regular);
         var code2000 = LoadFont("Fonts/Code2000-Regular.tmpx", FontStyle.Regular);
 
-        // Register fallback stacks
         RegisterFontChain("NotoSans", [notoSans, arialuni, seguisym, code2000]);
         RegisterFontChain("NotoMono", [notoMono, arialuni, seguisym, code2000]);
         RegisterFontChain("LiberationSans", [liberationSans, arialuni, seguisym, code2000]);
@@ -73,12 +71,40 @@ public class FontService : IDisposable, IFontResolver
         RegisterFontChain("Hellovetica", [hellovetica, arialuni, seguisym, code2000]);
         RegisterFontChain("Inconsolata", [inconsolata, arialuni, seguisym, code2000]);
 
-        // Concatenate buffers, assign global bases, upload
         BuildAndUploadBuffers();
         
         Shaper = new Shaper(this, fallbackChainRegistry);
     }
     
+    /// <summary>Adds a font from a <c>.tmpx</c> file in a resource source and uploads the glyphs again. Existing fonts keep their places, so earlier text still draws.</summary>
+    public FontInfo AddFont(string path, FontStyle style)
+    {
+        var info = LoadFont(path, style);
+        BuildAndUploadBuffers();
+        return infoByFont[info.Font];
+    }
+
+    /// <summary>Makes <paramref name="name"/> a font family that is drawn with the first of the families <paramref name="familyNames"/> that has the glyph.</summary>
+    public void AddFallbackChain(string name, IEnumerable<string> familyNames)
+        => fallbackChainRegistry.RegisterFallbackChain(name, familyNames);
+
+    /// <summary>The names of the fonts a family is made of, in the order their glyphs are looked for.</summary>
+    public IReadOnlyList<string> GetFallbackNames(string family)
+        => fallbackChainRegistry.GetFontNames(family).ToList();
+
+    /// <summary>The fonts a family is made of, in the order their glyphs are looked for, each with where its glyphs begin in the renderer's buffers.</summary>
+    public IReadOnlyList<(IFont Font, int ShapeEntryBase)> GetFontChain(string family, FontStyle style)
+    {
+        var chain = new List<(IFont, int)>();
+        foreach (var name in fallbackChainRegistry.GetFontNames(family))
+        {
+            if (((IFontResolver)this).TryResolve(name, style, out var font) || ((IFontResolver)this).TryResolve(name, FontStyle.Regular, out font))
+                chain.Add((font, GetGlobalShapeEntryBase(font)));
+        }
+
+        return chain;
+    }
+
     public int GetGlobalShapeEntryBase(IFont font)
     {
         if (!infoByFont.TryGetValue(font, out var info))
@@ -127,13 +153,10 @@ public class FontService : IDisposable, IFontResolver
 
     private void BuildAndUploadBuffers()
     {
-        // Walk every distinct loaded font (in stable insertion order via infoByFont) and
-        // concatenate the four per-font buffers into four global arrays, recording each font's
-        // base offset so indices can be remapped later.
+        // Concatenate the four per-font buffers into four global arrays, recording each font's base offset to remap indices later.
 
         var allFonts = infoByFont.Values.ToList(); // insertion order
 
-        // Compute running totals to determine base offsets
         var curveBase = 0;
         var curveIndexBase = 0;
         var bandEntryBase = 0;
@@ -152,7 +175,6 @@ public class FontService : IDisposable, IFontResolver
             shapeEntryBase += info.Font.ShapeEntries.Length;
         }
 
-        // Allocate the four global buffers
         var globalCurves       = new QuadraticCurve[curveBase];
         var globalCurveIndices = new int[curveIndexBase];
         var globalBandEntries  = new BandEntry[bandEntryBase];
@@ -164,13 +186,11 @@ public class FontService : IDisposable, IFontResolver
         var bandEntryOff = 0;
         var shapeEntryOff = 0;
 
-        // Iterate in the same order (re-read the patched infos)
         foreach (var originalInfo in allFonts)
         {
             var info = infoByFont[originalInfo.Font]; // pick up the patched version
             var font = info.Font;
 
-            // Curves
             font.Curves.CopyTo(globalCurves, curveOff);
 
             // CurveIndices: each index is a local curve index, add curveOff
@@ -216,12 +236,11 @@ public class FontService : IDisposable, IFontResolver
             shapeEntryOff += font.ShapeEntries.Length;
         }
 
-        // Upload to renderer in one shot
-        renderingFactory.SetFontBuffersAsync(globalCurves, globalCurveIndices, globalBandEntries, globalShapeEntries);
+        renderingFactory.SetFontBuffers(globalCurves, globalCurveIndices, globalBandEntries, globalShapeEntries);
     }
 
     public void Dispose()
     {
-        renderingFactory.SetFontBuffersAsync([], [], [], []);
+        renderingFactory.SetFontBuffers([], [], [], []);
     }
 }

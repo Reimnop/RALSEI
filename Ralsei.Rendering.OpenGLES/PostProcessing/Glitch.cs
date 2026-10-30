@@ -7,7 +7,7 @@ using Ralsei.Util;
 namespace Ralsei.Rendering.OpenGLES.PostProcessing;
 
 // based on limitless glitch 2
-public class Glitch : IDisposable
+internal class Glitch : IDisposable
 {
     private const int NoiseTextureWidth = 64;
     private const int NoiseTextureHeight = 62;
@@ -32,38 +32,32 @@ public class Glitch : IDisposable
     {
         program = LoaderUtil.LoadPostProcessingProgram(loader, "Glitch", vertexShader);
         
-        // Get uniform locations
         intensityUniformLocation = GL.GetUniformLocation(program, "uIntensity");
         colorIntensityUniformLocation = GL.GetUniformLocation(program, "uColorIntensity");
         
         var textureUniformLocation = GL.GetUniformLocation(program, "uTexture");
         var noiseTextureUniformLocation = GL.GetUniformLocation(program, "uNoiseTexture");
         
-        // Set sampler uniform binding
         GL.UseProgram(program);
         GL.Uniform1i(textureUniformLocation, 0);
         GL.Uniform1i(noiseTextureUniformLocation, 1);
         
-        // Create noise texture
         noiseTexture = GL.GenTexture();
         GL.BindTexture(TextureTarget.Texture2d, noiseTexture);
         GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgb8, NoiseTextureWidth, NoiseTextureHeight);
         
-        // Create noise sampler
         noiseTextureSampler = GL.GenSampler();
         GL.SamplerParameteri(noiseTextureSampler, SamplerParameterI.TextureMinFilter, (int)TextureMinFilter.Nearest);
         GL.SamplerParameteri(noiseTextureSampler, SamplerParameterI.TextureMagFilter, (int)TextureMagFilter.Nearest);
         GL.SamplerParameteri(noiseTextureSampler, SamplerParameterI.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
         GL.SamplerParameteri(noiseTextureSampler, SamplerParameterI.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
         
-        // Create main sampler
         sampler = GL.GenSampler();
         GL.SamplerParameteri(sampler, SamplerParameterI.TextureMinFilter, (int)TextureMinFilter.Linear);
         GL.SamplerParameteri(sampler, SamplerParameterI.TextureMagFilter, (int)TextureMagFilter.Linear);
         GL.SamplerParameteri(sampler, SamplerParameterI.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
         GL.SamplerParameteri(sampler, SamplerParameterI.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
         
-        // Initialize framebuffer and VAO
         framebuffer = GL.GenFramebuffer();
         vaoHandle = GL.GenVertexArray();
     }
@@ -100,7 +94,6 @@ public class Glitch : IDisposable
             FillNoiseTexture(rng, currentStretchMultiplier);
         }
         
-        // Attach output texture to framebuffer
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, outputTexture, 0);
         GL.Viewport(0, 0, size.X, size.Y);

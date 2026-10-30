@@ -2,10 +2,7 @@ using Ralsei.Core.Data;
 
 namespace Ralsei.Rendering.Data;
 
-/// <summary>
-/// How a texture is read: the filter for when it is shrunk and for when it is magnified, and what is read outside it. It is a
-/// property of the texture, given when it is created.
-/// </summary>
+/// <summary>How a texture is read: minification and magnification filters and what is read outside it. Given when the texture is created.</summary>
 public readonly record struct TextureSampling(
     TextureFilteringMode MinificationFilter,
     TextureFilteringMode MagnificationFilter,

@@ -4,11 +4,7 @@ using Ralsei.Mathematics;
 
 namespace Ralsei.Rendering.Vulkan;
 
-/// <summary>
-/// What every post-processing compute shader has in common: one descriptor set layout (an output
-/// image and up to two sampled inputs), a push constant range for the per-pass parameters, and
-/// the samplers the passes pick from.
-/// </summary>
+/// <summary>What every post-processing compute shader shares: a descriptor set layout (an output image and up to two sampled inputs), a push constant range for the per-pass parameters, and the samplers the passes pick from.</summary>
 internal sealed unsafe class ComputeShared : IDisposable
 {
     // The minimum size every Vulkan implementation has to support
@@ -122,9 +118,7 @@ internal sealed unsafe class ComputeShared : IDisposable
     }
 }
 
-/// <summary>
-/// A compute pipeline for one post-processing shader.
-/// </summary>
+/// <summary>A compute pipeline for one post-processing shader.</summary>
 internal sealed unsafe class ComputeKernel : IDisposable
 {
     private const int GroupSize = 8; // matches local_size_x/y in the shaders
@@ -174,10 +168,7 @@ internal sealed unsafe class ComputeKernel : IDisposable
         Vk.DestroyPipeline(context.Device, pipeline, null);
     }
 
-    /// <summary>
-    /// Dispatches enough groups to cover <paramref name="size"/> pixels, then waits for the results to
-    /// be visible to whatever compute pass comes next.
-    /// </summary>
+    /// <summary>Dispatches enough groups to cover <paramref name="size"/> pixels, then waits for the results to be visible to the next compute pass.</summary>
     public void Run(
         FrameResources frame, Vector2i size, GpuImage output,
         GpuImage? input0 = null, VkSampler sampler0 = default,

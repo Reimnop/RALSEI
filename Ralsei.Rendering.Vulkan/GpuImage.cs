@@ -3,11 +3,7 @@ using Ralsei.Mathematics;
 
 namespace Ralsei.Rendering.Vulkan;
 
-/// <summary>
-/// A 2D VkImage with its own dedicated memory allocation and a view covering the whole image.
-/// Disposing destroys it immediately, so an image that the GPU might still be using has to be
-/// handed to <see cref="FrameResources.Defer"/> instead.
-/// </summary>
+/// <summary>A 2D VkImage with its own memory and a view of the whole image. Disposing destroys it at once, so an image the GPU might still use goes to <see cref="FrameResources.Defer"/>.</summary>
 internal sealed unsafe class GpuImage : IDisposable
 {
     public VkImage Image { get; private set; }
@@ -95,17 +91,11 @@ internal sealed unsafe class GpuImage : IDisposable
         }
     }
 
-    /// <summary>
-    /// The usage of an image that is both read and written by compute shaders.
-    /// </summary>
+    /// <summary>The usage of an image that compute shaders read and write.</summary>
     public const VkImageUsageFlagBits ComputeUsage =
         VkImageUsageFlagBits.ImageUsageStorageBit | VkImageUsageFlagBits.ImageUsageSampledBit;
 
-    /// <summary>
-    /// Creates an image and moves it to <see cref="VkImageLayout.ImageLayoutGeneral"/>. Images used by
-    /// compute shaders are always kept in that layout, which lets them be sampled, stored to, copied
-    /// to and from without any further layout transitions.
-    /// </summary>
+    /// <summary>Creates an image in the general layout, which images used by compute shaders stay in so they can be sampled, stored to and copied with no transitions.</summary>
     public static GpuImage CreateGeneral(VulkanContext context, Vector2i size, VkFormat format, VkImageUsageFlagBits usage)
     {
         var image = new GpuImage(context, size, format, usage);

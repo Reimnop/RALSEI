@@ -10,12 +10,7 @@ namespace Ralsei.Rendering.Common;
 /// <param name="TextureCount">How many textures the page has: at most the page size.</param>
 public readonly record struct TexturePage(int FirstCommand, int CommandCount, int FirstTexture, int TextureCount);
 
-/// <summary>
-/// For the backends that cannot have every texture bound at once (no bindless textures): divides the draw commands of a pass into pages of
-/// at most N textures, N being how many the hardware can have bound together. Going through the commands in order, a command whose
-/// texture the current page does not have, and has no room for, starts the next page; a draw batch (instances of a mesh, a multi-draw)
-/// must not go past the end of its page. Each command gets the slot its texture has in its page.
-/// </summary>
+/// <summary>For backends without bindless textures: divides a pass's draw commands into pages of at most N textures (what the hardware can bind together). A command whose texture the current page lacks and has no room for starts the next page, and a draw batch must not cross a page end. Each command gets its texture's slot in its page.</summary>
 public sealed class TexturePager
 {
     private readonly List<TexturePage> pages = [];
@@ -80,13 +75,11 @@ public sealed class TexturePager
 
     /// <summary>The texture a draw command samples, or <see cref="TextureHandle.None"/>.</summary>
     public static TextureHandle TextureOf(in DrawData drawData, in DrawCommandWithDepth command)
-    {
-        if (command.DrawType != DrawType.Mesh)
-            return TextureHandle.None;
-
-        ref var meshDrawItem = ref drawData.MeshDrawItems[command.DrawId];
-        return meshDrawItem.RenderMode == RenderMode.Normal ? meshDrawItem.Texture : TextureHandle.None;
-    }
+        => command.DrawType switch
+        {
+            DrawType.Mesh => drawData.MeshDrawItems[command.DrawId].RenderMode == RenderMode.Normal ? drawData.MeshDrawItems[command.DrawId].Texture : TextureHandle.None,
+            _ => TextureHandle.None
+        };
 
     private int IndexOfTexture(int pageFirstTexture, int textureId)
     {

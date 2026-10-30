@@ -4,9 +4,7 @@ using Ralsei.Mathematics;
 
 namespace Ralsei.Rendering.Vulkan.PostProcessing;
 
-/// <summary>
-/// Blurs the image over a disc, like a lens that is out of focus.
-/// </summary>
+/// <summary>Blurs the image over a disc, like an out-of-focus lens.</summary>
 internal sealed class DepthOfField : IDisposable
 {
     // Spelled out in DepthOfField.comp as well

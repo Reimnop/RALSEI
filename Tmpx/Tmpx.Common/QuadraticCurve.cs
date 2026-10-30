@@ -3,9 +3,6 @@ using System.Runtime.InteropServices;
 
 namespace Tmpx.Common;
 
-/// <summary>
-/// Represents a quadratic Bezier curve
-/// </summary>
 [StructLayout(LayoutKind.Sequential)]
 public struct QuadraticCurve
 {

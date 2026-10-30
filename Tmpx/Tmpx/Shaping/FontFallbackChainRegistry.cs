@@ -19,7 +19,6 @@ public class FontFallbackChainRegistry(string defaultName)
         if (fallbackChains.TryGetValue(family, out var fallbackFamilies))
             return fallbackFamilies;
         
-        // if we don't have a fallback chain for the requested family, return the default one
         if (fallbackChains.TryGetValue(defaultName, out var defaultFallbackFamilies))
             return defaultFallbackFamilies;
         

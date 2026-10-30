@@ -5,9 +5,7 @@ using Tmpx.Common;
 
 namespace Tmpx.Generator;
 
-/// <summary>
-/// Extracts curves from glyph outlines, and returns a list of quadratic Bézier curves
-/// </summary>
+/// <summary>Extracts glyph outlines as quadratic Bézier curves.</summary>
 public static class CurveExtractor
 {
     private class State
@@ -122,7 +120,6 @@ public static class CurveExtractor
         }
         else
         {
-            // De Casteljau split at t=0.5
             var m01  = (p0 + c1) * 0.5f;
             var m12  = (c1 + c2) * 0.5f;
             var m23  = (c2 + p3) * 0.5f;

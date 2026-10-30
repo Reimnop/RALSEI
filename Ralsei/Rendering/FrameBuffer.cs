@@ -3,23 +3,15 @@ using Ralsei.Util;
 
 namespace Ralsei.Rendering;
 
-/// <summary>
-/// One frame of draw data on its way to the render thread. Pooled by the rendering factory, which sizes it
-/// through <see cref="Resize"/>; the application fills the passes (see <see cref="PassBuffer"/>) and submits it.
-/// </summary>
-/// <remarks>
-/// A frame is made of one or more passes. They are drawn in order, each to a target of its own that is the same size as the
-/// frame, with its own camera, clear color, draw commands and post-processing; then each is laid over the passes before it,
-/// with the alpha of what it drew (so the first pass is the back, and a pass whose clear color is transparent only covers
-/// what it draws).
-/// </remarks>
+/// <summary>One frame of draw data on its way to the render thread. Pooled and sized through <see cref="Resize"/>; the application fills the passes (<see cref="PassBuffer"/>) and submits it.</summary>
+/// <remarks>The passes are drawn in order, each to a target the size of the frame with its own camera, clear colour, draws and post-processing, then laid over the earlier ones by alpha (the first is the back; a pass with a transparent clear colour only covers what it draws).</remarks>
 public sealed class FrameBuffer : IDrawDataProvider, IResettable
 {
-    /// <summary>
-    /// The post-processing of the frame as a whole: what is done to the layered result of the passes, after the post-processing of
-    /// each pass. Null for none, as when a frame has only one pass, which has its own.
-    /// </summary>
+    /// <summary>The post-processing of the layered result, after each pass's own. Null for none.</summary>
     public PostProcessingState? FinalPostProcessingState { get; set; }
+
+    /// <summary>The version of the resources the frame was submitted at (see <see cref="IFrameQueue.SubmitFrame"/>).</summary>
+    public long ResourceVersion { get; set; }
 
     /// <summary>The passes of the frame, in the order they are drawn and layered.</summary>
     public ReadOnlySpan<PassBuffer> Passes => passes.AsSpan(0, passCount);
@@ -28,9 +20,7 @@ public sealed class FrameBuffer : IDrawDataProvider, IResettable
     private PassBuffer[] passes = [];
     private int passCount;
 
-    /// <summary>
-    /// Sets how many passes there are and how big each is. Existing contents are not preserved or cleared.
-    /// </summary>
+    /// <summary>Sets how many passes there are and how big each is. Contents are not preserved or cleared.</summary>
     public void Resize(ReadOnlySpan<PassSize> sizes)
     {
         if (sizes.IsEmpty)
@@ -58,6 +48,7 @@ public sealed class FrameBuffer : IDrawDataProvider, IResettable
             pass.Reset();
         passCount = 0;
         FinalPostProcessingState = null;
+        ResourceVersion = 0;
     }
 
     int IDrawDataProvider.PassCount => passCount;

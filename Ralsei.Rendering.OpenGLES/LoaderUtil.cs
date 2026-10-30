@@ -5,7 +5,7 @@ using Ralsei.ShaderProcessor;
 
 namespace Ralsei.Rendering.OpenGLES;
 
-public static class LoaderUtil
+internal static class LoaderUtil
 {
     public static int LoadShaderProgram(ResourceLoader loader, string vertexShaderName, string fragmentShaderName, params KeyValuePair<string, string?>[] defines)
     {
@@ -25,16 +25,13 @@ public static class LoaderUtil
             throw new Exception($"Failed to link program: {infoLog}");
         }
 
-        // Clean up
         GL.DeleteShader(vertexShader);
         GL.DeleteShader(fragmentShader);
 
         return program;
     }
 
-    /// <summary>
-    /// Compiles the vertex shader that the post-processing programs are linked with. The caller deletes it.
-    /// </summary>
+    /// <summary>Compiles the vertex shader the post-processing programs link with. The caller deletes it.</summary>
     public static int LoadPostProcessVertexShader(ResourceLoader loader)
     {
         return CompileShader(ShaderType.VertexShader, ShaderLoader.ForOpenGLES(loader).Load("PostProcess.vert"));
@@ -56,7 +53,6 @@ public static class LoaderUtil
             throw new Exception($"Failed to link program: {infoLog}");
         }
 
-        // Clean up
         GL.DetachShader(program, vertexShader);
         GL.DeleteShader(fragmentShader);
 

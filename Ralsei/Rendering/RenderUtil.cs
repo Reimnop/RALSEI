@@ -29,7 +29,8 @@ public static class RenderUtil
             Math.Min(size.Y, newSize.Y));
     }
     
-    public static Matrix3x2 GetCameraMatrix(in CameraState camera, Vector2i size)
+    /// <summary>The view matrix of a camera looking at a world through a target of <paramref name="size"/> pixels; its scale is half the height it sees.</summary>
+    public static Matrix3x2 GetViewMatrix(in CameraState camera, Vector2i size)
     {
         if (camera.Scale == 0.0f)
             return new Matrix3x2();
@@ -45,6 +46,30 @@ public static class RenderUtil
         return view * projection;
     }
     
+    /// <summary>Throws if a mesh draw uses the output of a pass that is not before its own. Marks passes whose output is used in <paramref name="used"/>, if given (one place per pass, not cleared).</summary>
+    public static void ValidatePassTextures(IDrawDataProvider frame, Span<bool> used = default)
+    {
+        for (var passIndex = 0; passIndex < frame.PassCount; passIndex++)
+        {
+            var drawData = frame.CreateDrawData(passIndex);
+            foreach (ref var drawCommand in drawData.DrawCommands)
+            {
+                if (drawCommand.DrawType != DrawType.Mesh)
+                    continue;
+
+                ref var meshDrawItem = ref drawData.MeshDrawItems[drawCommand.DrawId];
+                if (meshDrawItem.RenderMode == RenderMode.Normal && meshDrawItem.Texture.IsPass && meshDrawItem.Texture.PassIndex >= passIndex)
+                {
+                    throw new InvalidOperationException(
+                        $"A draw in pass {passIndex} uses the output of pass {meshDrawItem.Texture.PassIndex}, but a pass can only use the output of a pass before it");
+                }
+
+                if (!used.IsEmpty && meshDrawItem.RenderMode == RenderMode.Normal && meshDrawItem.Texture.IsPass)
+                    used[meshDrawItem.Texture.PassIndex] = true;
+            }
+        }
+    }
+
     public static bool ShouldUseTransparentDrawList(in DrawCommand drawCommand, in DrawData drawData)
     {
         if (drawCommand.DrawType == DrawType.Text)
@@ -58,6 +83,10 @@ public static class RenderUtil
 
             return meshDrawItem.Color1.A < 1f; // We only use Color1 in normal render mode
         }
+
+        // A ring is as see-through as its edges are soft; its second colour is not a colour
+        if (meshDrawItem.RenderMode == RenderMode.Ring)
+            return true;
 
         return meshDrawItem.Color1.A < 1f || meshDrawItem.Color2.A < 1f;
     }

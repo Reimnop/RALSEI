@@ -1,28 +1,28 @@
+using System.Numerics;
 using Ralsei.Core.Data;
 using Ralsei.Rendering.Data;
 using Ralsei.Util;
 
 namespace Ralsei.Rendering;
 
-/// <summary>
-/// How many elements a pass of a frame has.
-/// </summary>
+/// <summary>How many elements a pass of a frame has.</summary>
 public readonly record struct PassSize(int DrawCommandCount, int MeshDrawItemCount, int TextDrawItemCount);
 
-/// <summary>
-/// One pass of a <see cref="FrameBuffer"/>: everything that is drawn to one target, with its own camera, clear color,
-/// post-processing and draw commands. Pooled with the frame, which sizes it; the application fills the spans (a plain copy does the job).
-/// </summary>
+/// <summary>One pass of a <see cref="FrameBuffer"/>: everything drawn to one target, with its own view matrix, clear colour, post-processing and draws. Pooled and sized with the frame; the application fills the spans.</summary>
 public sealed class PassBuffer : IResettable
 {
-    public CameraState CameraState { get; set; }
+    /// <summary>Maps the pass's world to clip space: x and y run -1 to 1 over the target (or its <see cref="Viewport"/>), y up. The application works it out (see <see cref="RenderUtil.GetViewMatrix"/>); the renderer only multiplies by it.</summary>
+    public Matrix3x2 ViewMatrix { get; set; } = Matrix3x2.Identity;
     public PostProcessingState PostProcessingState { get; set; }
 
-    /// <summary>
-    /// What the pass's target is cleared to. Its alpha says how much of what is behind the pass shows through where the pass draws nothing:
-    /// it is 1 for the usual background, and 0 for a pass that is only laid over the passes before it.
-    /// </summary>
+    /// <summary>What the target is cleared to. Its alpha says how much of the passes behind shows through where nothing is drawn: 1 for a usual background, 0 for a pure overlay.</summary>
     public ColorRgba ClearColor { get; set; }
+
+    /// <summary>How much of the pass shows when laid over the earlier ones, 0 to 1: everything it drew, clear colour included, is scaled by it, fading a group as one without overlaps showing through. Only matters with more than one pass.</summary>
+    public float Opacity { get; set; } = 1f;
+
+    /// <summary>Where in the target the pass is drawn, if only a part (a small view in a window): a pixel rectangle. The pass is drawn as if the target were that rectangle (camera and clips relative to its top-left), and nothing shows outside it. <c>default</c> is the whole target.</summary>
+    public ClipRect Viewport { get; set; }
 
     public Span<DrawCommand> DrawCommands => drawCommands.AsSpan(0, drawCommandCount);
     public Span<MeshDrawItem> MeshDrawItems => meshDrawItems.AsSpan(0, meshDrawItemCount);
@@ -36,9 +36,7 @@ public sealed class PassBuffer : IResettable
     private int meshDrawItemCount;
     private int textDrawItemCount;
 
-    /// <summary>
-    /// Sets how many elements the spans expose. Existing contents are not preserved or cleared.
-    /// </summary>
+    /// <summary>Sets how many elements the spans expose. Contents are not preserved or cleared.</summary>
     public void Resize(PassSize size)
     {
         EnsureCapacity(ref drawCommands, size.DrawCommandCount);
@@ -52,9 +50,11 @@ public sealed class PassBuffer : IResettable
 
     public void Reset()
     {
-        CameraState = new CameraState { Scale = 10f };
+        ViewMatrix = Matrix3x2.Identity;
         PostProcessingState = default;
         ClearColor = new ColorRgba(0.0f, 0.0f, 0.0f, 1.0f);
+        Opacity = 1f;
+        Viewport = default;
         drawCommandCount = 0;
         meshDrawItemCount = 0;
         textDrawItemCount = 0;
@@ -63,9 +63,11 @@ public sealed class PassBuffer : IResettable
     internal DrawData CreateDrawData()
         => new()
         {
-            CameraState = CameraState,
+            ViewMatrix = ViewMatrix,
             PostProcessingState = PostProcessingState,
             ClearColor = ClearColor,
+            Opacity = Opacity,
+            Viewport = Viewport,
             DrawCommands = DrawCommands,
             MeshDrawItems = MeshDrawItems,
             TextDrawItems = TextDrawItems
