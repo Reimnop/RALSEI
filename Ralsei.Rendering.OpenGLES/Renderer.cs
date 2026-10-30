@@ -70,7 +70,7 @@ internal class Renderer : IRenderer, IDisposable
 
     private readonly int glyphProgramHandle;
     private readonly int glyphMvpUniformLocation, glyphZUniformLocation, glyphBaseColorUniformLocation;
-    private readonly int glyphViewportSizeUniformLocation;
+    private readonly int glyphViewportSizeUniformLocation, glyphClipUniformLocation;
 
     private int fontCurvesTextureHandle;
     private int fontCurveIndicesTextureHandle;
@@ -191,6 +191,7 @@ internal class Renderer : IRenderer, IDisposable
             glyphZUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uZ");
             glyphBaseColorUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uBaseColor");
             glyphViewportSizeUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uViewportSize");
+            glyphClipUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uClip");
 
             var curvesUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uCurves");
             var curveIndicesUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uCurveIndices");
@@ -220,6 +221,7 @@ internal class Renderer : IRenderer, IDisposable
             GL.EnableVertexAttribArray(7);
             GL.EnableVertexAttribArray(8);
             GL.EnableVertexAttribArray(9);
+            GL.EnableVertexAttribArray(10);
             
             GL.VertexAttribDivisor(2, 1);
             GL.VertexAttribDivisor(3, 1);
@@ -229,6 +231,7 @@ internal class Renderer : IRenderer, IDisposable
             GL.VertexAttribDivisor(7, 1);
             GL.VertexAttribDivisor(8, 1);
             GL.VertexAttribDivisor(9, 1);
+            GL.VertexAttribDivisor(10, 1);
             
             textVertexArrayHandle = GL.GenVertexArray();
             GL.BindVertexArray(textVertexArrayHandle);
@@ -717,9 +720,6 @@ internal class Renderer : IRenderer, IDisposable
         // Where the next batch's items start in the instance buffer, counted in items
         var instanceOffset = 0;
 
-        var clip = default(ClipRect);
-        ApplyClip(clip);
-
         foreach (var page in texturePager.Pages)
         {
             BindTexturePage(page);
@@ -728,12 +728,6 @@ internal class Renderer : IRenderer, IDisposable
             for (var i = page.FirstCommand; i < pageEnd; i++)
             {
                 ref var drawCommand = ref drawCommands[i];
-
-                if (drawCommand.Clip != clip)
-                {
-                    clip = drawCommand.Clip;
-                    ApplyClip(clip);
-                }
 
                 switch (drawCommand.DrawType)
                 {
@@ -744,8 +738,7 @@ internal class Renderer : IRenderer, IDisposable
                         var batchEnd = i + 1;
                         while (batchEnd < pageEnd &&
                                drawCommands[batchEnd].DrawType == DrawType.Mesh &&
-                               drawData.MeshDrawItems[drawCommands[batchEnd].DrawId].MeshHandle.Id == meshHandleId &&
-                               drawCommands[batchEnd].Clip == clip)
+                               drawData.MeshDrawItems[drawCommands[batchEnd].DrawId].MeshHandle.Id == meshHandleId)
                             batchEnd++;
 
                         var instanceCount = batchEnd - i;
@@ -774,6 +767,8 @@ internal class Renderer : IRenderer, IDisposable
                         GL.Uniform4f(glyphBaseColorUniformLocation,
                             textDrawItem.Color.R, textDrawItem.Color.G,
                             textDrawItem.Color.B, textDrawItem.Color.A);
+                        var (clipMin, clipMax) = ClipBounds.Pack(drawCommand.Clip, passViewport, currentFboSize);
+                        GL.Uniform2ui(glyphClipUniformLocation, clipMin, clipMax);
                         GL.Uniform2f(glyphViewportSizeUniformLocation, passViewport.Enabled ? passViewport.Width : currentFboSize.X, passViewport.Enabled ? passViewport.Height : currentFboSize.Y);
 
                         GL.BindVertexArray(textVertexArrayHandle);
@@ -868,6 +863,7 @@ internal class Renderer : IRenderer, IDisposable
             unlitDrawItem.TextureSlotIndex = textured ? texturePager.SlotOf(commandIndex) : -1;
             unlitDrawItem.GradientMode = (int) meshDrawItem.RenderMode;
             unlitDrawItem.TextureFlags = crispEdges ? 1 : 0;
+            (unlitDrawItem.ClipMin, unlitDrawItem.ClipMax) = ClipBounds.Pack(drawCommand.Clip, passViewport, currentFboSize);
         }
 
         if (count == 0)
@@ -942,6 +938,7 @@ internal class Renderer : IRenderer, IDisposable
         GL.VertexAttribPointer(7, 4, VertexAttribPointerType.Float, false, stride, baseOffset + 80);   // UvRect
         GL.VertexAttribPointer(8, 1, VertexAttribPointerType.Float, false, stride, baseOffset + 96);   // GradientScale
         GL.VertexAttribIPointer(9, 3, VertexAttribIType.Int, stride, baseOffset + 100);                // TextureSlotIndex, GradientMode and TextureFlags
+        GL.VertexAttribIPointer(10, 2, VertexAttribIType.UnsignedInt, stride, baseOffset + 112);       // ClipMin and ClipMax
     }
 
     private void UpdateOpenGlData(Vector2i size)

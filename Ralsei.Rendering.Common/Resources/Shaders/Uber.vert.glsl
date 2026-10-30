@@ -23,10 +23,6 @@ RALSEI_LOCATION(9) flat out uvec2 vClip;
 struct MultiDrawItem {
     int renderType;
     int drawId;
-    // The part of the target the draw shows in, in pixels from the corner the target's rows start at: left and top, then
-    // right and bottom, each pair as two 16-bit halves of one uint (x in the low half). Fragments outside it are not drawn.
-    uint clipMin;
-    uint clipMax;
 };
 
 struct MeshDrawItem {
@@ -43,6 +39,8 @@ struct MeshDrawItem {
     int texture1;
     vec4 fog;
     int textureFlags;
+    uint clipMin;       // see Clip.glsl
+    uint clipMax;
 };
 
 struct TextDrawItem {
@@ -50,6 +48,8 @@ struct TextDrawItem {
     float z;
     int glyphOffset;
     vec4 color;
+    uint clipMin;       // see Clip.glsl
+    uint clipMax;
 };
 
 struct RenderGlyph {
@@ -99,7 +99,7 @@ void main() {
     vTexture = RALSEI_NO_TEXTURE;
     vFog = vec4(0.0);
     vTextureFlags = 0;
-    vClip = uvec2(item.clipMin, item.clipMax);
+    vClip = uvec2(0u, 0xFFFFFFFFu);
 
     if (item.renderType == 1) { // text path
         TextDrawItem text = textDrawItems[item.drawId];
@@ -107,6 +107,7 @@ void main() {
 
         vColor1 = text.color * glyph.color;
         vShapeIndex = glyph.shapeEntryIndex;
+        vClip = uvec2(text.clipMin, text.clipMax);
 
         mat3x2 finalMvp = mult3x2(text.mvp, glyph.transform);
 
@@ -139,6 +140,7 @@ void main() {
         vColor1 = mesh.color1;
         vColor2 = mesh.color2;
         vRenderMode = mesh.renderMode;
+        vClip = uvec2(mesh.clipMin, mesh.clipMax);
 
         gl_Position = vec4(vec2(mesh.mvp * vec3(aPos, 1.0)), toDepth(mesh.z), 1.0);
     }

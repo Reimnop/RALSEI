@@ -30,4 +30,10 @@ internal struct GpuMeshDrawItem
 
     /// <summary>Whether the texture is sampled with crisp edges (1) or not (0).</summary>
     [FieldOffset(112)] public int TextureFlags;
+
+    /// <summary>Where the draw shows, in pixels of the target: left and top (x in the low 16 bits), see <see cref="Common.ClipBounds.Pack"/>.</summary>
+    [FieldOffset(116)] public uint ClipMin;
+
+    /// <summary>Right and bottom, packed the same way. Fragments at or past it are not drawn.</summary>
+    [FieldOffset(120)] public uint ClipMax;
 }

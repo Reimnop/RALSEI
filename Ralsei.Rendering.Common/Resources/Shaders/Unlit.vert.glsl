@@ -13,6 +13,7 @@ flat out vec4 vFog;
 flat out int vTexture;
 flat out int vTextureFlags;
 flat out int vRenderMode;
+flat out uvec2 vClip;
 
 // The draw item of the instance, as GpuUnlitDrawItem lays it out
 layout(location = 2) in vec4 aMvp1;             // the first two columns of the transform
@@ -23,6 +24,7 @@ layout(location = 6) in vec4 aFog;              // the colour in red, green and 
 layout(location = 7) in vec4 aUvRect;           // the texture region: min u, min v, max u, max v
 layout(location = 8) in float aGradientScale;
 layout(location = 9) in ivec3 aTextureAndMode;  // the texture slot, the render mode (0 for no gradient) and the texture flags
+layout(location = 10) in uvec2 aClip;           // where the draw shows, see Clip.glsl
 
 void main() {
     int renderMode = aTextureAndMode.y;
@@ -43,6 +45,7 @@ void main() {
     vTexture = aTextureAndMode.x;
     vTextureFlags = aTextureAndMode.z;
     vRenderMode = renderMode;
+    vClip = aClip;
 
     gl_Position = vec4(vec2(mvp * vec3(aPos, 1.0)), toDepth(aMvp2.z), 1.0);
 }

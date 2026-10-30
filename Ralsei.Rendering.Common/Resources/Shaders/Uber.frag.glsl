@@ -5,6 +5,7 @@
 #include "Common/Glyph.glsl"
 #include "Common/Alpha.glsl"
 #include "Common/Texturing.glsl"
+#include "Common/Clip.glsl"
 
 layout(location = 0) out vec4 oFragColor;
 
@@ -31,9 +32,7 @@ RALSEI_STORAGE_BUFFER(7) ShapeEntryBuffer { ShapeEntry shapeEntries[]; };
 #include "Common/GlyphCoverage.glsl"
 
 void main() {
-    // The clip of the draw (draws with different clips are one multi-draw, so it is not the scissor's)
-    uvec2 pixel = uvec2(gl_FragCoord.xy);
-    if (pixel.x < (vClip.x & 0xFFFFu) || pixel.y < (vClip.x >> 16) || pixel.x >= (vClip.y & 0xFFFFu) || pixel.y >= (vClip.y >> 16))
+    if (isOutsideClip(vClip))
         discard;
 
     if (vRenderType == 1) {

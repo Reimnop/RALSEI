@@ -5,7 +5,7 @@ using Ralsei.Core.Data;
 namespace Ralsei.Rendering.OpenGLES;
 
 /// <summary>One instance of a mesh draw, as the per-instance vertex attributes of Unlit.vert.glsl.</summary>
-[StructLayout(LayoutKind.Explicit, Size = 112)]
+[StructLayout(LayoutKind.Explicit, Size = 120)]
 internal struct GpuUnlitDrawItem
 {
     /// <summary>The first two columns of the transform: M11, M12, M21, M22.</summary>
@@ -32,4 +32,10 @@ internal struct GpuUnlitDrawItem
 
     /// <summary>Whether the texture is sampled with crisp edges (1) or not (0).</summary>
     [FieldOffset(108)] public int TextureFlags;
+
+    /// <summary>Where the draw shows, in pixels of the target: left and top (x in the low 16 bits), see <see cref="Common.ClipBounds.Pack"/>.</summary>
+    [FieldOffset(112)] public uint ClipMin;
+
+    /// <summary>Right and bottom, packed the same way. Fragments at or past it are not drawn.</summary>
+    [FieldOffset(116)] public uint ClipMax;
 }

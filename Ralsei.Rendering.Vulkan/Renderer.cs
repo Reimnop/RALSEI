@@ -742,7 +742,7 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
             {
                 ref var currentCommand = ref drawCommands[i];
 
-                // The clip is the draw's own, cut in the shader, so a change of it does not split the multi-draw (only the batch of one mesh)
+                // The clip is the draw's own, cut in the shader, so draws with different clips are still batched
                 var (clipMin, clipMax) = ClipBounds.Pack(currentCommand.Clip, passViewport, currentFboSize);
 
                 switch (currentCommand.DrawType)
@@ -769,21 +769,20 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                             Texture0 = texture.Texture0,
                             Texture1 = texture.Texture1,
                             Fog = meshDrawItem.Fog,
-                            TextureFlags = texture.Flags
+                            TextureFlags = texture.Flags,
+                            ClipMin = clipMin,
+                            ClipMax = clipMax
                         });
                         currentMeshDrawId++;
 
                         if (i + 1 >= pageEnd ||
                             drawCommands[i + 1].DrawType != DrawType.Mesh ||
-                            meshDrawItem.MeshHandle.Id != drawData.MeshDrawItems[drawCommands[i + 1].DrawId].MeshHandle.Id ||
-                            drawCommands[i + 1].Clip != currentCommand.Clip)
+                            meshDrawItem.MeshHandle.Id != drawData.MeshDrawItems[drawCommands[i + 1].DrawId].MeshHandle.Id)
                         {
                             multiDrawItemsBuffer.Append(new GpuMultiDrawItem
                             {
                                 RenderType = 0,
                                 DrawId = lastMeshDrawId,
-                                ClipMin = clipMin,
-                                ClipMax = clipMax
                             });
 
                             multiDrawIndirectBuffer.Append(new DrawIndexedIndirectCommand
@@ -814,9 +813,7 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                         multiDrawItemsBuffer.Append(new GpuMultiDrawItem
                         {
                             RenderType = 1,
-                            DrawId = currentTextDrawId++,
-                            ClipMin = clipMin,
-                            ClipMax = clipMax
+                            DrawId = currentTextDrawId++
                         });
 
                         multiDrawTextItemsBuffer.Append(new GpuTextDrawItem
@@ -824,7 +821,9 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                             Mvp = mvp,
                             Z = currentCommand.Depth,
                             GlyphOffset = textInfo.Allocation.Offset,
-                            Color = textDrawItem.Color
+                            Color = textDrawItem.Color,
+                            ClipMin = clipMin,
+                            ClipMax = clipMax
                         });
 
                         multiDrawIndirectBuffer.Append(new DrawIndexedIndirectCommand
