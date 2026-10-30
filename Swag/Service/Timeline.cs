@@ -171,7 +171,8 @@ public class Timeline : IDisposable
                 .Select<int, IndexedCollectionEntry<PlaybackObject>?>(x => playbackObjects.TryGetItem(x, out var item) 
                     ? new IndexedCollectionEntry<PlaybackObject>(item, x)
                     : null)
-                .SelectMany(x => x.HasValue
+                // Only what is drawn is on the timeline (an object that is not drawn has its start changed too)
+                .SelectMany(x => x.HasValue && x.Value.Item.Type.IsDrawable()
                     ? GetObjectEvents(x.Value)
                     : []));
             objectEvents.Sort(objectEventComparer);
@@ -185,6 +186,9 @@ public class Timeline : IDisposable
         {
             // forces recalculation of currentEventIndex
             // TODO: Make this more efficient
+            // The events that are replayed from the start put in and take out of what is alive, so what was alive by the old ones (an object
+            // that now spawns later, or never) must not be left in it
+            aliveObjects.Clear();
             previousTime = float.NegativeInfinity;
             currentEventIndex = 0;
         }
