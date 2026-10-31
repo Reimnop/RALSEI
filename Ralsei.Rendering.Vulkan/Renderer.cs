@@ -174,6 +174,8 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
     private GpuImage msaaDepthImage = null!;
     private GpuImage postProcessImage1 = null!, postProcessImage2 = null!;
 
+    private GpuImage? viewportImage1, viewportImage2;
+
     // What multiple passes are layered on
     private GpuImage? compositeImage;
 
@@ -543,7 +545,10 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
             RenderScene(frame, record);
 
             // (Passes of a layered frame with no effects are left as they are)
-            var passImage = HandlePostProcessing(frame, record.PostProcessingState, postProcessImage1, postProcessImage2, skipIfNoFinalEffects: layered);
+            // A pass drawn in a part of the target has its effects on that part, as on a target of its own
+            var passImage = record.Viewport.Enabled && record.PostProcessingState.HasEffects
+                ? ProcessInViewport(frame, record.PostProcessingState, record.Viewport, layered)
+                : HandlePostProcessing(frame, record.PostProcessingState, postProcessImage1, postProcessImage2, skipIfNoFinalEffects: layered);
             if (passOutputUsed[passIndex])
                 RecordKeepPassOutput(frame, passIndex, passImage);
 
@@ -1232,26 +1237,108 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
         }
     }
 
-    private GpuImage HandlePostProcessing(FrameResources frame, PostProcessingState state, GpuImage image1, GpuImage image2, bool skipIfNoFinalEffects = false)
+    /// <summary>
+    /// Post-processes the part of the target that a pass was drawn in (the first post-processing image) as a picture of its own, and puts the
+    /// result back in its place. The effects work in the coordinates of what they are given (the middle of the lens, the edge of the vignette,
+    /// the stretch of the glitch), so they are given the part, not the whole target that the part is only a piece of.
+    /// </summary>
+    private GpuImage ProcessInViewport(FrameResources frame, PostProcessingState state, ClipRect viewport, bool layered)
     {
-        if (depthOfField.Process(frame, currentFboSize, state.DepthOfField.Radius, image1, image2))
+        var left = Math.Clamp(viewport.X, 0, currentFboSize.X);
+        var top = Math.Clamp(viewport.Y, 0, currentFboSize.Y);
+        var right = Math.Clamp(viewport.Right, left, currentFboSize.X);
+        var bottom = Math.Clamp(viewport.Bottom, top, currentFboSize.Y);
+        var size = new Vector2i(right - left, bottom - top);
+        if (size.X <= 0 || size.Y <= 0)
+            return postProcessImage1;
+
+        if (viewportImage1 == null || viewportImage1.Size != size)
+        {
+            if (viewportImage1 != null)
+            {
+                // Earlier frames might still be using them
+                frame.Defer(viewportImage1);
+                frame.Defer(viewportImage2!);
+            }
+
+            const VkImageUsageFlagBits usage =
+                GpuImage.ComputeUsage | VkImageUsageFlagBits.ImageUsageTransferSrcBit | VkImageUsageFlagBits.ImageUsageTransferDstBit;
+            viewportImage1 = GpuImage.CreateGeneral(context, size, ColorFormat, usage);
+            viewportImage2 = GpuImage.CreateGeneral(context, size, ColorFormat, usage);
+        }
+
+        // Images count their rows from the bottom
+        var y = currentFboSize.Y - bottom;
+        RecordBlit(frame, postProcessImage1, new Vector2i(left, y), viewportImage1, Vector2i.Zero, size);
+        var result = HandlePostProcessing(frame, state, viewportImage1, viewportImage2!, layered, size);
+        RecordBlit(frame, result, Vector2i.Zero, postProcessImage1, new Vector2i(left, y), size);
+        return postProcessImage1;
+    }
+
+    /// <summary>Copies a part of an image (from <paramref name="from"/>, of <paramref name="size"/>) to a place of another, between the work before it and the work after it.</summary>
+    private void RecordBlit(FrameResources frame, GpuImage source, Vector2i from, GpuImage target, Vector2i to, Vector2i size)
+    {
+        var cmd = frame.Cmd;
+        VkUtil.PipelineBarrier(cmd, VkUtil.MemoryBarrier(
+            VkPipelineStageFlagBits2.PipelineStage2AllCommandsBit,
+            VkAccessFlagBits2.Access2MemoryReadBit | VkAccessFlagBits2.Access2MemoryWriteBit,
+            VkPipelineStageFlagBits2.PipelineStage2AllTransferBit,
+            VkAccessFlagBits2.Access2TransferReadBit | VkAccessFlagBits2.Access2TransferWriteBit));
+
+        var region = new VkImageBlit2
+        {
+            sType = VkStructureType.StructureTypeImageBlit2,
+            srcSubresource = VkUtil.ColorLayers(),
+            dstSubresource = VkUtil.ColorLayers()
+        };
+        region.srcOffsets[0] = new VkOffset3D { x = from.X, y = from.Y, z = 0 };
+        region.srcOffsets[1] = new VkOffset3D { x = from.X + size.X, y = from.Y + size.Y, z = 1 };
+        region.dstOffsets[0] = new VkOffset3D { x = to.X, y = to.Y, z = 0 };
+        region.dstOffsets[1] = new VkOffset3D { x = to.X + size.X, y = to.Y + size.Y, z = 1 };
+
+        var blitInfo = new VkBlitImageInfo2
+        {
+            sType = VkStructureType.StructureTypeBlitImageInfo2,
+            srcImage = source.Image,
+            srcImageLayout = VkImageLayout.ImageLayoutGeneral,
+            dstImage = target.Image,
+            dstImageLayout = VkImageLayout.ImageLayoutGeneral,
+            regionCount = 1,
+            pRegions = &region,
+            filter = VkFilter.FilterNearest
+        };
+        Vk.CmdBlitImage2(cmd, &blitInfo);
+
+        VkUtil.PipelineBarrier(cmd, VkUtil.MemoryBarrier(
+            VkPipelineStageFlagBits2.PipelineStage2AllTransferBit,
+            VkAccessFlagBits2.Access2TransferReadBit | VkAccessFlagBits2.Access2TransferWriteBit,
+            VkPipelineStageFlagBits2.PipelineStage2AllCommandsBit,
+            VkAccessFlagBits2.Access2MemoryReadBit | VkAccessFlagBits2.Access2MemoryWriteBit));
+    }
+
+    private GpuImage HandlePostProcessing(FrameResources frame, PostProcessingState state, GpuImage image1, GpuImage image2, bool skipIfNoFinalEffects = false, Vector2i size = default)
+    {
+        if (size.X == 0 || size.Y == 0)
+            size = currentFboSize;
+
+        if (depthOfField.Process(frame, size, state.DepthOfField.Radius, image1, image2))
             Swap(ref image1, ref image2);
 
-        if (legacyBloom.Process(frame, currentFboSize, state.LegacyBloom.Intensity, state.LegacyBloom.Diffusion, state.LegacyBloom.Color, image1, image2))
+        if (legacyBloom.Process(frame, size, state.LegacyBloom.Intensity, state.LegacyBloom.Diffusion, state.LegacyBloom.Color, image1, image2))
             Swap(ref image1, ref image2);
 
-        if (universalBloom.Process(frame, currentFboSize, state.UniversalBloom.Intensity, state.UniversalBloom.Diffusion, state.UniversalBloom.Color, image1, image2))
+        if (universalBloom.Process(frame, size, state.UniversalBloom.Intensity, state.UniversalBloom.Diffusion, state.UniversalBloom.Color, image1, image2))
             Swap(ref image1, ref image2);
 
-        if (glitch.Process(frame, currentFboSize, state.Time, state.Glitch.Speed, state.Glitch.Intensity, state.Glitch.Amount, state.Glitch.StretchMultiplier, image1, image2))
+        if (glitch.Process(frame, size, state.Time, state.Glitch.Speed, state.Glitch.Intensity, state.Glitch.Amount, state.Glitch.StretchMultiplier, image1, image2))
             Swap(ref image1, ref image2);
 
-        if (grain.Process(frame, currentFboSize, state.Time, state.Grain.Colored, state.Grain.Intensity, state.Grain.Size, state.Grain.LuminanceContribution, image1, image2))
+        if (grain.Process(frame, size, state.Time, state.Grain.Colored, state.Grain.Intensity, state.Grain.Size, state.Grain.LuminanceContribution, image1, image2))
             Swap(ref image1, ref image2);
 
         if ((!skipIfNoFinalEffects || state.HasFinalEffects) && uberPost.Process(
                 frame,
-                currentFboSize,
+                size,
                 state.HueShift.Angle,
                 state.LensDistortion.Intensity, state.LensDistortion.Center,
                 state.ChromaticAberration.Intensity,
@@ -1674,7 +1761,8 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
         const VkImageUsageFlagBits postProcessUsage =
             GpuImage.ComputeUsage |
             VkImageUsageFlagBits.ImageUsageColorAttachmentBit |
-            VkImageUsageFlagBits.ImageUsageTransferSrcBit;
+            VkImageUsageFlagBits.ImageUsageTransferSrcBit |
+            VkImageUsageFlagBits.ImageUsageTransferDstBit;
         postProcessImage1 = GpuImage.CreateGeneral(context, size, ColorFormat, postProcessUsage);
         postProcessImage2 = GpuImage.CreateGeneral(context, size, ColorFormat, postProcessUsage);
 
@@ -1712,6 +1800,9 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
         msaaDepthImage?.Dispose();
         postProcessImage1?.Dispose();
         postProcessImage2?.Dispose();
+        viewportImage1?.Dispose();
+        viewportImage2?.Dispose();
+        viewportImage1 = viewportImage2 = null;
         compositeImage?.Dispose();
         compositeImage = null;
 

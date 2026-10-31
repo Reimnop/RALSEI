@@ -83,6 +83,9 @@ internal class Renderer : IRenderer, IDisposable
     private int postProcessTextureHandle1, postProcessTextureHandle2;
     private readonly int postProcessFboHandle;
 
+    private int viewportTextureHandle1, viewportTextureHandle2, viewportFboHandle;
+    private Vector2i viewportTextureSize;
+
     // What multiple passes are layered on
     private int compositeTextureHandle;
 
@@ -350,6 +353,9 @@ internal class Renderer : IRenderer, IDisposable
         GL.DeleteTexture(postProcessTextureHandle1);
         GL.DeleteTexture(postProcessTextureHandle2);
         GL.DeleteFramebuffer(postProcessFboHandle);
+        DeleteViewportTextures();
+        if (viewportFboHandle != 0)
+            GL.DeleteFramebuffer(viewportFboHandle);
         
         frameReadback?.Dispose();
         GL.DeleteFramebuffer(presentFramebufferHandle);
@@ -680,32 +686,108 @@ internal class Renderer : IRenderer, IDisposable
             ClearBufferMask.ColorBufferBit,
             BlitFramebufferFilter.Nearest);
 
+        // A pass drawn in a part of the target has its effects on that part, as on a target of its own
+        if (viewport.Enabled && drawData.PostProcessingState.HasEffects)
+            return ProcessInViewport(drawData.PostProcessingState, viewport, layered);
+
         // (Passes of a layered frame with no effects are left as they are)
         return HandlePostProcessing(drawData.PostProcessingState, postProcessTextureHandle1, postProcessTextureHandle2, skipIfNoFinalEffects: layered);
     }
 
-    private int HandlePostProcessing(PostProcessingState state, int texture1, int texture2, bool skipIfNoFinalEffects = false)
+    /// <summary>
+    /// Post-processes the part of the target that a pass was drawn in (the first post-processing texture) as a picture of its own, and puts the
+    /// result back in its place. The effects work in the coordinates of what they are given (the middle of the lens, the edge of the vignette,
+    /// the stretch of the glitch), so they are given the part, not the whole target that the part is only a piece of.
+    /// </summary>
+    private int ProcessInViewport(PostProcessingState state, ClipRect viewport, bool layered)
     {
+        var left = Math.Clamp(viewport.X, 0, currentFboSize.X);
+        var top = Math.Clamp(viewport.Y, 0, currentFboSize.Y);
+        var right = Math.Clamp(viewport.Right, left, currentFboSize.X);
+        var bottom = Math.Clamp(viewport.Bottom, top, currentFboSize.Y);
+        var size = new Vector2i(right - left, bottom - top);
+        if (size.X <= 0 || size.Y <= 0)
+            return postProcessTextureHandle1;
+
+        EnsureViewportTextures(size);
+
+        // Textures count their rows from the bottom
+        var y = currentFboSize.Y - bottom;
+        if (viewportFboHandle == 0)
+            viewportFboHandle = GL.GenFramebuffer();
+
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, viewportFboHandle);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, viewportTextureHandle1, 0);
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, postProcessFboHandle);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, postProcessTextureHandle1, 0);
+
+        GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, postProcessFboHandle);
+        GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, viewportFboHandle);
+        GL.BlitFramebuffer(left, y, left + size.X, y + size.Y, 0, 0, size.X, size.Y, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Nearest);
+
+        var result = HandlePostProcessing(state, viewportTextureHandle1, viewportTextureHandle2, layered, size);
+
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, viewportFboHandle);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, result, 0);
+        GL.BindFramebuffer(FramebufferTarget.Framebuffer, postProcessFboHandle);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, postProcessTextureHandle1, 0);
+
+        GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, viewportFboHandle);
+        GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, postProcessFboHandle);
+        GL.BlitFramebuffer(0, 0, size.X, size.Y, left, y, left + size.X, y + size.Y, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Nearest);
+        return postProcessTextureHandle1;
+    }
+
+    private void EnsureViewportTextures(Vector2i size)
+    {
+        if (viewportTextureHandle1 != 0 && viewportTextureSize == size)
+            return;
+
+        DeleteViewportTextures();
+        viewportTextureHandle1 = GL.GenTexture();
+        GL.BindTexture(TextureTarget.Texture2d, viewportTextureHandle1);
+        GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
+
+        viewportTextureHandle2 = GL.GenTexture();
+        GL.BindTexture(TextureTarget.Texture2d, viewportTextureHandle2);
+        GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
+        viewportTextureSize = size;
+    }
+
+    private void DeleteViewportTextures()
+    {
+        if (viewportTextureHandle1 != 0)
+            GL.DeleteTexture(viewportTextureHandle1);
+        if (viewportTextureHandle2 != 0)
+            GL.DeleteTexture(viewportTextureHandle2);
+        viewportTextureHandle1 = viewportTextureHandle2 = 0;
+    }
+
+    private int HandlePostProcessing(PostProcessingState state, int texture1, int texture2, bool skipIfNoFinalEffects = false, Vector2i size = default)
+    {
+        if (size.X == 0 || size.Y == 0)
+            size = currentFboSize;
+
         GL.Disable(EnableCap.DepthTest);
         GL.Disable(EnableCap.Blend);
 
-        if (depthOfField.Process(currentFboSize, state.DepthOfField.Radius, texture1, texture2))
+        if (depthOfField.Process(size, state.DepthOfField.Radius, texture1, texture2))
             Swap(ref texture1, ref texture2);
 
-        if (legacyBloom.Process(currentFboSize, state.LegacyBloom.Intensity, state.LegacyBloom.Diffusion, state.LegacyBloom.Color, texture1, texture2))
+        if (legacyBloom.Process(size, state.LegacyBloom.Intensity, state.LegacyBloom.Diffusion, state.LegacyBloom.Color, texture1, texture2))
             Swap(ref texture1, ref texture2);
         
-        if (universalBloom.Process(currentFboSize, state.UniversalBloom.Intensity, state.UniversalBloom.Diffusion, state.UniversalBloom.Color, texture1, texture2))
+        if (universalBloom.Process(size, state.UniversalBloom.Intensity, state.UniversalBloom.Diffusion, state.UniversalBloom.Color, texture1, texture2))
             Swap(ref texture1, ref texture2);
         
-        if (glitch.Process(currentFboSize, state.Time, state.Glitch.Speed, state.Glitch.Intensity, state.Glitch.Amount, state.Glitch.StretchMultiplier, texture1, texture2))
+        if (glitch.Process(size, state.Time, state.Glitch.Speed, state.Glitch.Intensity, state.Glitch.Amount, state.Glitch.StretchMultiplier, texture1, texture2))
             Swap(ref texture1, ref texture2);
         
-        if (grain.Process(currentFboSize, state.Time, state.Grain.Colored, state.Grain.Intensity, state.Grain.Size, state.Grain.LuminanceContribution, texture1, texture2))
+        if (grain.Process(size, state.Time, state.Grain.Colored, state.Grain.Intensity, state.Grain.Size, state.Grain.LuminanceContribution, texture1, texture2))
             Swap(ref texture1, ref texture2);
         
         if ((!skipIfNoFinalEffects || state.HasFinalEffects) && uberPost.Process(
-                currentFboSize,
+                size,
                 state.HueShift.Angle,
                 state.LensDistortion.Intensity, state.LensDistortion.Center,
                 state.ChromaticAberration.Intensity,
