@@ -15,8 +15,6 @@ using Ralsei.Rendering.Data;
 using Ralsei.Rendering.Handle;
 using Ralsei.Rendering.Vulkan.PostProcessing;
 using Ralsei.Util;
-using BandEntry = Tmpx.Common.BandEntry;
-using QuadraticCurve = Tmpx.Common.QuadraticCurve;
 
 namespace Ralsei.Rendering.Vulkan;
 
@@ -112,11 +110,11 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
     private readonly Dictionary<TextureSampling, GpuSampler> samplers = [];
 
     // What empty page slots are bound to (shaders read every slot's descriptor)
-    private GpuImage emptyTexture = null!;
-    private GpuSampler emptySampler = null!;
+    private readonly GpuImage emptyTexture;
+    private readonly GpuSampler emptySampler;
 
     // Bindless: one descriptor set with every texture; an index is reused only once the frames that might draw it are done
-    private bool bindlessTextures;
+    private readonly bool bindlessTextures;
     private VkDescriptorPool bindlessPool;
     private VkDescriptorSet bindlessSet;
     private readonly Stack<int> freeBindlessIndices = [];
@@ -171,8 +169,8 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
 
     private Vector2i currentFboSize;
     private GpuImage? msaaColorImage; // null when not multisampling
-    private GpuImage msaaDepthImage = null!;
-    private GpuImage postProcessImage1 = null!, postProcessImage2 = null!;
+    private GpuImage? msaaDepthImage;
+    private GpuImage? postProcessImage1, postProcessImage2;
 
     private GpuImage? viewportImage1, viewportImage2;
 
@@ -326,21 +324,21 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
         // Let the GPU finish before destroying anything it might still be using
         context.WaitIdle();
 
-        legacyBloom?.Dispose();
-        universalBloom?.Dispose();
-        glitch?.Dispose();
-        grain?.Dispose();
-        uberPost?.Dispose();
-        blend?.Dispose();
-        depthOfField?.Dispose();
+        legacyBloom.Dispose();
+        universalBloom.Dispose();
+        glitch.Dispose();
+        grain.Dispose();
+        uberPost.Dispose();
+        blend.Dispose();
+        depthOfField.Dispose();
 
         foreach (var texture in textures)
             texture?.Image.Dispose();
         foreach (var sampler in samplers.Values)
             sampler.Dispose();
         passSampler?.Dispose();
-        emptyTexture?.Dispose();
-        emptySampler?.Dispose();
+        emptyTexture.Dispose();
+        emptySampler.Dispose();
 
         swapchain?.Dispose();
         readbackBuffer?.Dispose();
@@ -360,13 +358,13 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
         if (uberSetLayout.Handle != 0)
             Vk.DestroyDescriptorSetLayout(context.Device, uberSetLayout, null);
 
-        vertexBuffer?.Dispose();
-        indexBuffer?.Dispose();
-        glyphStorageBuffer?.Dispose();
-        curveBuffer?.Dispose();
-        curveIndexBuffer?.Dispose();
-        bandEntryBuffer?.Dispose();
-        shapeEntryBuffer?.Dispose();
+        vertexBuffer.Dispose();
+        indexBuffer.Dispose();
+        glyphStorageBuffer.Dispose();
+        curveBuffer.Dispose();
+        curveIndexBuffer.Dispose();
+        bandEntryBuffer.Dispose();
+        shapeEntryBuffer.Dispose();
 
         foreach (var frame in frames)
             frame?.Dispose();
@@ -886,6 +884,8 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                 VkPipelineStageFlagBits2.PipelineStage2ColorAttachmentOutputBit,
                 VkAccessFlagBits2.Access2ColorAttachmentReadBit | VkAccessFlagBits2.Access2ColorAttachmentWriteBit);
         }
+        
+        Debug.Assert(msaaDepthImage != null);
 
         barriers[barrierCount++] = VkUtil.ImageBarrier(
             msaaDepthImage.Image,
@@ -912,6 +912,9 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
         colorAttachment.clearValue.color.float32[1] = clearColor.G;
         colorAttachment.clearValue.color.float32[2] = clearColor.B;
         colorAttachment.clearValue.color.float32[3] = clearColor.A;
+        
+        Debug.Assert(postProcessImage1 != null);
+        Debug.Assert(postProcessImage2 != null);
 
         if (msaaColorImage != null)
         {
@@ -1244,6 +1247,11 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
     /// </summary>
     private GpuImage ProcessInViewport(FrameResources frame, PostProcessingState state, ClipRect viewport, bool layered)
     {
+        Debug.Assert(postProcessImage1 != null);
+        Debug.Assert(postProcessImage2 != null);
+        Debug.Assert(viewportImage1 != null);
+        Debug.Assert(viewportImage2 != null);
+
         var left = Math.Clamp(viewport.X, 0, currentFboSize.X);
         var top = Math.Clamp(viewport.Y, 0, currentFboSize.Y);
         var right = Math.Clamp(viewport.Right, left, currentFboSize.X);
@@ -1706,7 +1714,7 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
                     frame.UploadToBuffer(
                         glyphStorageBuffer,
                         (ulong) (glyphAlloc.Offset * Unsafe.SizeOf<GpuRenderGlyph>()),
-                        MemoryMarshal.AsBytes<GpuRenderGlyph>(renderGlyphs));
+                        MemoryMarshal.AsBytes(renderGlyphs));
 
                     textInfos.EnsureCount(command.Id + 1);
                     textInfos[command.Id] = new TextInfo
@@ -1773,6 +1781,11 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
     {
         if (msaaColorImage != null)
             frame.Defer(msaaColorImage);
+        
+        Debug.Assert(msaaDepthImage != null);
+        Debug.Assert(postProcessImage1 != null);
+        Debug.Assert(postProcessImage2 != null);
+        
         frame.Defer(msaaDepthImage);
         frame.Defer(postProcessImage1);
         frame.Defer(postProcessImage2);
