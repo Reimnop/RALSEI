@@ -219,7 +219,9 @@ Contributions are welcome! Please feel free to submit issues, fork the repositor
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+RALSEI is licensed under the MIT License - [LICENSE-RALSEI](LICENSE-RALSEI).
+
+SWAG is licensed under the GPLv3 License - [LICENSE-SWAG](LICENSE-SWAG).
 
 ### Fork rules
 
