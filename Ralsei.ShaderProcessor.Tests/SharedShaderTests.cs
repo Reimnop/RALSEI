@@ -37,22 +37,22 @@ public class SharedShaderTests
         if (shader.StartsWith("PostProcessing/", StringComparison.Ordinal))
             return [OpenGL, OpenGLES, Vulkan];
         if (shader.StartsWith("Uber.", StringComparison.Ordinal))
-            return [OpenGL, Vulkan];
+            return [OpenGL, OpenGLES, Vulkan];
         if (shader.StartsWith("ImGui.", StringComparison.Ordinal))
             return [OpenGL, OpenGLES];
-        if (shader.StartsWith("Unlit.", StringComparison.Ordinal) || shader.StartsWith("Text.", StringComparison.Ordinal) || shader == "PostProcess.vert.glsl")
+        if (shader == "PostProcess.vert.glsl")
             return [OpenGLES];
 
         return [];
     }
 
-    /// <summary>Every shader for every API it is for, with the textures read as pages of them; and the Uber shaders also bindless.</summary>
+    /// <summary>Every shader for every API it is for, with the textures read as pages of them; and the Uber shaders also bindless where the API has it (not OpenGL ES).</summary>
     public static IEnumerable<object[]> Cases()
     {
         return EntryShaders().SelectMany(shader => ApisOf(shader).SelectMany(api =>
         {
             var cases = new List<object[]> { new object[] { shader, api.Name, false } };
-            if (shader.StartsWith("Uber.", StringComparison.Ordinal))
+            if (shader.StartsWith("Uber.", StringComparison.Ordinal) && api != OpenGLES)
                 cases.Add([shader, api.Name, true]);
             return cases;
         }));

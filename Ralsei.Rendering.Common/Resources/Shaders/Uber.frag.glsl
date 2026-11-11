@@ -1,4 +1,4 @@
-// OpenGL and Vulkan only
+// The fragments of Uber.vert: meshes and text.
 
 #include "Common/Prelude.glsl"
 #include "Common/Color.glsl"
@@ -20,6 +20,10 @@ RALSEI_LOCATION(7) flat in vec4 vFog;
 RALSEI_LOCATION(8) flat in int vTextureFlags;
 RALSEI_LOCATION(9) flat in uvec2 vClip;
 
+// The glyphs' data, which GL ES reads from textures (it has no storage buffers)
+#ifdef RALSEI_GLES
+#include "Common/GlyphTextures.glsl"
+#else
 RALSEI_STORAGE_BUFFER(4) CurveBuffer { QuadraticCurve curves[]; };
 RALSEI_STORAGE_BUFFER(5) CurveIndexBuffer { int curveIndices[]; };
 RALSEI_STORAGE_BUFFER(6) BandEntryBuffer { BandEntry bandEntries[]; };
@@ -29,6 +33,7 @@ RALSEI_STORAGE_BUFFER(7) ShapeEntryBuffer { ShapeEntry shapeEntries[]; };
 #define RALSEI_FETCH_BAND_ENTRY(i) bandEntries[i]
 #define RALSEI_FETCH_CURVE_INDEX(i) curveIndices[i]
 #define RALSEI_FETCH_CURVE(i) curves[i]
+#endif
 #include "Common/GlyphCoverage.glsl"
 
 void main() {

@@ -15,6 +15,7 @@ public static class RalseiOptionsBuilderExtension
         services.AddSingleton<RenderingFactory>();
         services.AddSingleton<IRenderingFactory>(x => x.GetRequiredService<RenderingFactory>());
         services.AddSingleton<IFrameQueue, FrameQueue>();
+        services.AddSingleton<BuiltinRenderingPrimitive>();
         services.AddScoped<IRenderer, Renderer>();
 
         services.AddSingleton(new OpenGLSettings

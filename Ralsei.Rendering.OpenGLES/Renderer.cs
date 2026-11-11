@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
@@ -44,12 +44,17 @@ internal class Renderer : IRenderer, IDisposable
         public Allocation IndexBufferAllocation;
         public int VertexCount; // not currently used
         public int IndexCount;
+
+        /// <summary>Whether the mesh is the unit quad of sprites, which is drawn as an instance of the builtin quad, as the glyphs are.</summary>
+        public bool IsUnitQuad;
     }
 
     private struct TextInfo
     {
-        public Allocation Allocation;
         public int GlyphCount;
+
+        /// <summary>The glyphs, which are put in the instance buffer with the text's draw.</summary>
+        public RenderGlyph[]? Glyphs;
     }
 
     private struct TextureInfo
@@ -63,14 +68,15 @@ internal class Renderer : IRenderer, IDisposable
     private FrameReadback? frameReadback;
     private int presentFramebufferHandle;
 
+    // The program that draws meshes and text (Uber.vert), and where its uniform for the size of the viewport is
     private readonly int programHandle;
+    private readonly int viewportSizeUniformLocation;
+
+    // The builtin quad, which glyphs and sprites' quads are drawn as instances of
+    private readonly BuiltinRenderingPrimitive primitive;
 
     // The part of the target the pass that is being drawn is in (see PassBuffer.Viewport)
     private ClipRect passViewport;
-
-    private readonly int glyphProgramHandle;
-    private readonly int glyphMvpUniformLocation, glyphZUniformLocation, glyphBaseColorUniformLocation;
-    private readonly int glyphViewportSizeUniformLocation, glyphClipUniformLocation;
 
     private int fontCurvesTextureHandle;
     private int fontCurveIndicesTextureHandle;
@@ -110,15 +116,12 @@ internal class Renderer : IRenderer, IDisposable
     private readonly int mainVertexArrayHandle;
     private int mainVertexBufferHandle, mainIndexBufferHandle;
 
-    private readonly int textVertexArrayHandle;
-    private int textInstanceBufferHandle;
-    
-    private const int InitialUnlitInstanceBufferCapacity = 1024;
-    
-    private GpuUnlitDrawItem[] unlitDrawItems = new GpuUnlitDrawItem[InitialUnlitInstanceBufferCapacity];
-    private int unlitInstanceBuffer;
-    private int unlitInstanceBufferCapacity = InitialUnlitInstanceBufferCapacity;
-    
+    private const int InitialInstanceBufferCapacity = 1024;
+
+    private GpuDrawItem[] drawItems = new GpuDrawItem[InitialInstanceBufferCapacity];
+    private int instanceBuffer;
+    private int instanceBufferCapacity = InitialInstanceBufferCapacity;
+
     private const int InitialVertexBufferCapacity = 1024;
     private const int InitialIndexBufferCapacity = 1024;
 
@@ -131,9 +134,6 @@ internal class Renderer : IRenderer, IDisposable
     private readonly int texturePageSize;
     private readonly TexturePager texturePager = new();
     
-    private const int InitialGlyphBufferCapacity = 1024;
-    
-    private readonly PooledSuballocator glyphBufferAllocator = new(InitialGlyphBufferCapacity);
     private readonly List<TextInfo> textInfos = [];
     
     private readonly Queue<MeshLifecycleCommand> meshLifecycleCommands = [];
@@ -148,11 +148,13 @@ internal class Renderer : IRenderer, IDisposable
     
     public Renderer(
         RenderingFactory renderingFactory,
+        BuiltinRenderingPrimitive primitive,
         IOpenGLSurface surface,
         ResourceLoader loader,
         ILogger<Renderer> logger)
     {
         resources = renderingFactory.CreateMirror();
+        this.primitive = primitive;
         this.surface = surface;
         frameReceiver = surface as IFrameReceiver;
         this.logger = logger;
@@ -173,43 +175,32 @@ internal class Renderer : IRenderer, IDisposable
             var initialSize = this.surface.RenderSize;
             
             // How many textures a page can use together: what a fragment shader can sample, and what fits in the units after the font's
+            // (the fragment shader samples the font's four textures as well, and the vertex shader the shape entries)
             texturePageSize = Math.Clamp(
-                Math.Min(GL.GetInteger(GetPName.MaxTextureImageUnits), GL.GetInteger(GetPName.MaxCombinedTextureImageUnits) - FirstTextureSlotUnit),
+                Math.Min(GL.GetInteger(GetPName.MaxTextureImageUnits) - FirstTextureSlotUnit, GL.GetInteger(GetPName.MaxCombinedTextureImageUnits) - FirstTextureSlotUnit - 1),
                 1, MaxTexturePageSize);
             if (int.TryParse(Environment.GetEnvironmentVariable("RALSEI_TEXTURE_PAGE_SIZE"), out var requestedPageSize) && requestedPageSize > 0)
                 texturePageSize = Math.Min(texturePageSize, requestedPageSize); // to try what many pages do
             logger.LogInformation("Textures bound at once: {PageSize}", texturePageSize);
             var pageSizeDefine = new KeyValuePair<string, string?>("RALSEI_TEXTURE_PAGE_SIZE", texturePageSize.ToString(CultureInfo.InvariantCulture));
 
-            programHandle = LoaderUtil.LoadShaderProgram(loader, "Unlit.vert", "Unlit.frag", pageSizeDefine);
+            programHandle = LoaderUtil.LoadShaderProgram(loader, "Uber.vert", "Uber.frag", pageSizeDefine);
+            viewportSizeUniformLocation = GL.GetUniformLocation(programHandle, "uViewportSize");
 
-            var texturesUniformLocation = GL.GetUniformLocation(programHandle, "uTextures");
             GL.UseProgram(programHandle);
+            var texturesUniformLocation = GL.GetUniformLocation(programHandle, "uTextures");
             for (var i = 0; i < texturePageSize; i++)
                 GL.Uniform1i(texturesUniformLocation + i, i + FirstTextureSlotUnit);
 
-            glyphProgramHandle = LoaderUtil.LoadShaderProgram(loader, "Text.vert", "Text.frag");
+            // The font's data: the units before the textures of a page
+            GL.Uniform1i(GL.GetUniformLocation(programHandle, "uCurves"), 0);
+            GL.Uniform1i(GL.GetUniformLocation(programHandle, "uCurveIndices"), 1);
+            GL.Uniform1i(GL.GetUniformLocation(programHandle, "uBandEntries"), 2);
+            GL.Uniform1i(GL.GetUniformLocation(programHandle, "uShapeEntries"), 3);
 
-            glyphMvpUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uMvp");
-            glyphZUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uZ");
-            glyphBaseColorUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uBaseColor");
-            glyphViewportSizeUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uViewportSize");
-            glyphClipUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uClip");
-
-            var curvesUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uCurves");
-            var curveIndicesUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uCurveIndices");
-            var bandEntriesUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uBandEntries");
-            var shapeEntriesUniformLocation = GL.GetUniformLocation(glyphProgramHandle, "uShapeEntries");
-
-            GL.UseProgram(glyphProgramHandle);
-            GL.Uniform1i(curvesUniformLocation, 0);
-            GL.Uniform1i(curveIndicesUniformLocation, 1);
-            GL.Uniform1i(bandEntriesUniformLocation, 2);
-            GL.Uniform1i(shapeEntriesUniformLocation, 3);
-            
-            unlitInstanceBuffer = GL.GenBuffer();
-            GL.BindBuffer(BufferTarget.ArrayBuffer, unlitInstanceBuffer);
-            GL.BufferData(BufferTarget.ArrayBuffer, InitialUnlitInstanceBufferCapacity * Unsafe.SizeOf<GpuUnlitDrawItem>(), IntPtr.Zero, BufferUsage.DynamicDraw);
+            instanceBuffer = GL.GenBuffer();
+            GL.BindBuffer(BufferTarget.ArrayBuffer, instanceBuffer);
+            GL.BufferData(BufferTarget.ArrayBuffer, InitialInstanceBufferCapacity * Unsafe.SizeOf<GpuDrawItem>(), IntPtr.Zero, BufferUsage.DynamicDraw);
 
             mainVertexArrayHandle = GL.GenVertexArray();
             GL.BindVertexArray(mainVertexArrayHandle);
@@ -235,22 +226,6 @@ internal class Renderer : IRenderer, IDisposable
             GL.VertexAttribDivisor(8, 1);
             GL.VertexAttribDivisor(9, 1);
             GL.VertexAttribDivisor(10, 1);
-            
-            textVertexArrayHandle = GL.GenVertexArray();
-            GL.BindVertexArray(textVertexArrayHandle);
-
-            // All attributes are per-instance (divisor=1); the 6 quad vertices come from gl_VertexID.
-            GL.EnableVertexAttribArray(0);  // transform col 0
-            GL.EnableVertexAttribArray(1);  // transform col 1
-            GL.EnableVertexAttribArray(2);  // transform col 2
-            GL.EnableVertexAttribArray(3);  // color
-            GL.EnableVertexAttribArray(4);  // shapeEntryIndex
-
-            GL.VertexAttribDivisor(0, 1);
-            GL.VertexAttribDivisor(1, 1);
-            GL.VertexAttribDivisor(2, 1);
-            GL.VertexAttribDivisor(3, 1);
-            GL.VertexAttribDivisor(4, 1);
             
             fboColorBufferHandle = GL.GenRenderbuffer();
             GL.BindRenderbuffer(RenderbufferTarget.Renderbuffer, fboColorBufferHandle);
@@ -327,20 +302,16 @@ internal class Renderer : IRenderer, IDisposable
             return;
         
         GL.DeleteProgram(programHandle);
-        GL.DeleteProgram(glyphProgramHandle);
         
         GL.DeleteBuffer(mainVertexBufferHandle);
         GL.DeleteBuffer(mainIndexBufferHandle);
         GL.DeleteVertexArray(mainVertexArrayHandle);
         
-        GL.DeleteBuffer(unlitInstanceBuffer);
+        GL.DeleteBuffer(instanceBuffer);
 
         foreach (var textureInfo in textureInfos.Where(x => x.HasValue).Select(x => x!.Value))
             GL.DeleteTexture(textureInfo.Handle);
 
-        GL.DeleteBuffer(textInstanceBufferHandle);
-        GL.DeleteVertexArray(textVertexArrayHandle);
-        
         GL.DeleteTexture(fontCurvesTextureHandle);
         GL.DeleteTexture(fontCurveIndicesTextureHandle);
         GL.DeleteTexture(fontBandEntriesTextureHandle);
@@ -814,6 +785,22 @@ internal class Renderer : IRenderer, IDisposable
         // Where the next batch's items start in the instance buffer, counted in items
         var instanceOffset = 0;
 
+        GL.UseProgram(programHandle);
+        GL.Uniform2f(viewportSizeUniformLocation, passViewport.Enabled ? passViewport.Width : currentFboSize.X, passViewport.Enabled ? passViewport.Height : currentFboSize.Y);
+
+        // The quads (sprites' and glyphs') that follow one another are the instances of one draw of the builtin quad: where they start in the
+        // instance buffer, and how many
+        var quadFirst = 0;
+        var quadCount = 0;
+        void FlushQuads()
+        {
+            if (quadCount == 0)
+                return;
+
+            RenderMeshBatch(quadFirst, quadCount, meshInfos[primitive.GlyphMeshHandle.Id]);
+            quadCount = 0;
+        }
+
         foreach (var page in texturePager.Pages)
         {
             BindTexturePage(page);
@@ -827,8 +814,19 @@ internal class Renderer : IRenderer, IDisposable
                 {
                     case DrawType.Mesh:
                     {
-                        // Take the draws that follow of the same mesh along, in order, so that they are drawn as instances
                         var meshHandleId = drawData.MeshDrawItems[drawCommand.DrawId].MeshHandle.Id;
+                        if (meshInfosSpan[meshHandleId].IsUnitQuad)
+                        {
+                            if (quadCount == 0)
+                                quadFirst = instanceOffset;
+                            quadCount++;
+                            instanceOffset++;
+                            break;
+                        }
+
+                        FlushQuads();
+
+                        // Take the draws that follow of the same mesh along, in order, so that they are drawn as instances
                         var batchEnd = i + 1;
                         while (batchEnd < pageEnd &&
                                drawCommands[batchEnd].DrawType == DrawType.Mesh &&
@@ -844,44 +842,20 @@ internal class Renderer : IRenderer, IDisposable
                     case DrawType.Text:
                     {
                         ref var textDrawItem = ref drawData.TextDrawItems[drawCommand.DrawId];
-                        ref var textInfo = ref textInfosSpan[textDrawItem.TextHandle.Id];
-
-                        if (textInfo.GlyphCount == 0)
+                        var glyphCount = textInfosSpan[textDrawItem.TextHandle.Id].GlyphCount;
+                        if (glyphCount == 0)
                             break;
 
-                        var mvp = textDrawItem.Transform * camera;
-
-                        GL.UseProgram(glyphProgramHandle);
-
-                        unsafe
-                        {
-                            GL.UniformMatrix3x2fv(glyphMvpUniformLocation, 1, false, (float*)&mvp);
-                        }
-                        GL.Uniform1f(glyphZUniformLocation, drawCommand.Depth);
-                        GL.Uniform4f(glyphBaseColorUniformLocation,
-                            textDrawItem.Color.R, textDrawItem.Color.G,
-                            textDrawItem.Color.B, textDrawItem.Color.A);
-                        var (clipMin, clipMax) = ClipBounds.Pack(drawCommand.Clip, passViewport, currentFboSize);
-                        GL.Uniform2ui(glyphClipUniformLocation, clipMin, clipMax);
-                        GL.Uniform2f(glyphViewportSizeUniformLocation, passViewport.Enabled ? passViewport.Width : currentFboSize.X, passViewport.Enabled ? passViewport.Height : currentFboSize.Y);
-
-                        GL.BindVertexArray(textVertexArrayHandle);
-                        GL.BindBuffer(BufferTarget.ArrayBuffer, textInstanceBufferHandle);
-
-                        var stride = Unsafe.SizeOf<RenderGlyph>();
-                        var baseOff = textInfo.Allocation.Offset * stride;
-
-                        GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, stride, baseOff);
-                        GL.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, stride, baseOff + 8);
-                        GL.VertexAttribPointer(2, 2, VertexAttribPointerType.Float, false, stride, baseOff + 16);
-                        GL.VertexAttribPointer(3, 4, VertexAttribPointerType.Float, false, stride, baseOff + 24);
-                        GL.VertexAttribIPointer(4, 1, VertexAttribIType.Int, stride, baseOff + 40);
-
-                        GL.DrawArraysInstanced(PrimitiveType.Triangles, 0, 6, textInfo.GlyphCount);
+                        if (quadCount == 0)
+                            quadFirst = instanceOffset;
+                        quadCount += glyphCount;
+                        instanceOffset += glyphCount;
                         break;
                     }
                 }
             }
+
+            FlushQuads();
         }
 
         GL.Disable(EnableCap.ScissorTest);
@@ -929,52 +903,99 @@ internal class Renderer : IRenderer, IDisposable
         }
     }
 
-    /// <summary>Puts the draw item of every mesh in the instance buffer, in draw order.</summary>
+    /// <summary>Puts the draw item of every mesh, and of every glyph of the texts, in the instance buffer, in draw order.</summary>
     private void UploadMeshInstances(in DrawData drawData, in Span<DrawCommandWithDepth> drawCommands, in Matrix3x2 camera)
     {
         var count = 0;
+        var textInfosSpan = CollectionsMarshal.AsSpan(textInfos);
+        var meshInfosSpan = CollectionsMarshal.AsSpan(meshInfos);
         for (var commandIndex = 0; commandIndex < drawCommands.Length; commandIndex++)
         {
             ref var drawCommand = ref drawCommands[commandIndex];
+            if (drawCommand.DrawType == DrawType.Text)
+            {
+                count = AddGlyphItems(drawData, drawCommand, textInfosSpan, camera, count);
+                continue;
+            }
+
             if (drawCommand.DrawType != DrawType.Mesh)
                 continue;
 
-            if (count >= unlitDrawItems.Length)
-                Array.Resize(ref unlitDrawItems, Math.Max(count + 1, unlitDrawItems.Length * 2));
+            if (count >= drawItems.Length)
+                Array.Resize(ref drawItems, Math.Max(count + 1, drawItems.Length * 2));
 
             ref var meshDrawItem = ref drawData.MeshDrawItems[drawCommand.DrawId];
-            ref var unlitDrawItem = ref unlitDrawItems[count++];
+            ref var drawItem = ref drawItems[count++];
 
             var textured = TexturedInfoOf(meshDrawItem.RenderMode == RenderMode.Normal ? meshDrawItem.Texture : TextureHandle.None, out var crispEdges);
             var mvp = meshDrawItem.Transform * camera;
-            unlitDrawItem.Mvp1 = new Vector4(mvp.M11, mvp.M12, mvp.M21, mvp.M22);
-            unlitDrawItem.Mvp2 = new Vector4(mvp.M31, mvp.M32, drawCommand.Depth, meshDrawItem.GradientRotation);
-            unlitDrawItem.Color1 = meshDrawItem.Color1;
-            unlitDrawItem.Color2 = meshDrawItem.Color2;
-            unlitDrawItem.Fog = meshDrawItem.Fog;
-            unlitDrawItem.UvRect = new Vector4(meshDrawItem.MinUV, meshDrawItem.MaxUV.X, meshDrawItem.MaxUV.Y);
-            unlitDrawItem.GradientScale = meshDrawItem.GradientScale;
-            unlitDrawItem.TextureSlotIndex = textured ? texturePager.SlotOf(commandIndex) : -1;
-            unlitDrawItem.GradientMode = (int) meshDrawItem.RenderMode;
-            unlitDrawItem.TextureFlags = crispEdges ? 1 : 0;
-            (unlitDrawItem.ClipMin, unlitDrawItem.ClipMax) = ClipBounds.Pack(drawCommand.Clip, passViewport, currentFboSize);
+            drawItem.Mvp1 = new Vector4(mvp.M11, mvp.M12, mvp.M21, mvp.M22);
+            drawItem.Mvp2 = new Vector4(mvp.M31, mvp.M32, drawCommand.Depth, meshDrawItem.GradientRotation);
+            drawItem.Color1 = meshDrawItem.Color1;
+            drawItem.Color2 = meshDrawItem.Color2;
+            drawItem.Fog = meshDrawItem.Fog;
+            drawItem.UvRect = new Vector4(meshDrawItem.MinUV, meshDrawItem.MaxUV.X, meshDrawItem.MaxUV.Y);
+            drawItem.GradientScale = meshDrawItem.GradientScale;
+            drawItem.TextureSlotIndex = textured ? texturePager.SlotOf(commandIndex) : -1;
+            drawItem.GradientMode = (int) meshDrawItem.RenderMode;
+            drawItem.TextureFlags = (crispEdges ? GpuDrawItem.CrispFlag : 0) | (meshInfosSpan[meshDrawItem.MeshHandle.Id].IsUnitQuad ? GpuDrawItem.QuadFlag : 0);
+            (drawItem.ClipMin, drawItem.ClipMax) = ClipBounds.Pack(drawCommand.Clip, passViewport, currentFboSize);
         }
 
         if (count == 0)
             return;
 
-        var itemSize = Unsafe.SizeOf<GpuUnlitDrawItem>();
-        GL.BindBuffer(BufferTarget.ArrayBuffer, unlitInstanceBuffer);
-        if (unlitDrawItems.Length > unlitInstanceBufferCapacity)
+        var itemSize = Unsafe.SizeOf<GpuDrawItem>();
+        GL.BindBuffer(BufferTarget.ArrayBuffer, instanceBuffer);
+        if (drawItems.Length > instanceBufferCapacity)
         {
             // A buffer of the new size, as big as the array, so that this is not done again until the array grows
-            unlitInstanceBufferCapacity = unlitDrawItems.Length;
-            GL.BufferData(BufferTarget.ArrayBuffer, unlitInstanceBufferCapacity * itemSize, unlitDrawItems, BufferUsage.DynamicDraw);
+            instanceBufferCapacity = drawItems.Length;
+            GL.BufferData(BufferTarget.ArrayBuffer, instanceBufferCapacity * itemSize, drawItems, BufferUsage.DynamicDraw);
         }
         else
         {
-            GL.BufferSubData(BufferTarget.ArrayBuffer, IntPtr.Zero, count * itemSize, unlitDrawItems);
+            GL.BufferSubData(BufferTarget.ArrayBuffer, IntPtr.Zero, count * itemSize, drawItems);
         }
+    }
+
+    /// <summary>Puts an item for each glyph of a text in the instance buffer's array, as Uber.vert reads them. Returns the new count of items.</summary>
+    private int AddGlyphItems(in DrawData drawData, in DrawCommandWithDepth drawCommand, Span<TextInfo> textInfosSpan, in Matrix3x2 camera, int count)
+    {
+        ref var textDrawItem = ref drawData.TextDrawItems[drawCommand.DrawId];
+        ref var textInfo = ref textInfosSpan[textDrawItem.TextHandle.Id];
+        if (textInfo.GlyphCount == 0 || textInfo.Glyphs is not { } glyphs)
+            return count;
+
+        if (count + glyphs.Length > drawItems.Length)
+            Array.Resize(ref drawItems, Math.Max(count + glyphs.Length, drawItems.Length * 2));
+
+        var mvp = textDrawItem.Transform * camera;
+        var color = textDrawItem.Color;
+        var (clipMin, clipMax) = ClipBounds.Pack(drawCommand.Clip, passViewport, currentFboSize);
+        var mvp1 = new Vector4(mvp.M11, mvp.M12, mvp.M21, mvp.M22);
+        var mvp2 = new Vector4(mvp.M31, mvp.M32, drawCommand.Depth, 0f);
+
+        for (var i = 0; i < glyphs.Length; i++)
+        {
+            ref var glyph = ref glyphs[i];
+            ref var item = ref drawItems[count++];
+
+            item.Mvp1 = mvp1;
+            item.Mvp2 = mvp2;
+            item.Color1 = new ColorRgba(color.R * glyph.Color.R, color.G * glyph.Color.G, color.B * glyph.Color.B, color.A * glyph.Color.A);
+            item.Color2 = new ColorRgba(glyph.Transform.M11, glyph.Transform.M12, glyph.Transform.M21, glyph.Transform.M22);
+            item.Fog = default;
+            item.UvRect = new Vector4(glyph.Transform.M31, glyph.Transform.M32, 0f, 0f);
+            item.GradientScale = 1f;
+            item.TextureSlotIndex = glyph.ShapeEntryIndex;
+            item.GradientMode = 0;
+            item.TextureFlags = GpuDrawItem.GlyphFlag;
+            item.ClipMin = clipMin;
+            item.ClipMax = clipMax;
+        }
+
+        return count;
     }
 
     /// <summary>The texture with an id: a texture of the factory or a pass output.</summary>
@@ -1003,9 +1024,8 @@ internal class Renderer : IRenderer, IDisposable
     private void RenderMeshBatch(int firstInstance, int instanceCount, in MeshInfo meshInfo)
     {
         GL.UseProgram(programHandle);
-        GL.BindVertexArray(mainVertexArrayHandle);
 
-        PointInstanceAttributes(firstInstance);
+        PointInstanceAttributes(mainVertexArrayHandle, firstInstance);
 
         GL.DrawElementsInstanced(
             PrimitiveType.Triangles,
@@ -1015,15 +1035,15 @@ internal class Renderer : IRenderer, IDisposable
             instanceCount);
     }
 
-    /// <summary>Binds the main vertex array and points its instance attributes at the items in the instance buffer from <paramref name="firstInstance"/>.</summary>
-    private void PointInstanceAttributes(int firstInstance)
+    /// <summary>Binds a vertex array and points its instance attributes at the items in the instance buffer from <paramref name="firstInstance"/>.</summary>
+    private void PointInstanceAttributes(int vertexArray, int firstInstance)
     {
-        GL.BindVertexArray(mainVertexArrayHandle);
+        GL.BindVertexArray(vertexArray);
 
         // The pointers take the buffer bound now
-        var stride = Unsafe.SizeOf<GpuUnlitDrawItem>();
+        var stride = Unsafe.SizeOf<GpuDrawItem>();
         var baseOffset = firstInstance * stride;
-        GL.BindBuffer(BufferTarget.ArrayBuffer, unlitInstanceBuffer);
+        GL.BindBuffer(BufferTarget.ArrayBuffer, instanceBuffer);
         GL.VertexAttribPointer(2, 4, VertexAttribPointerType.Float, false, stride, baseOffset);        // Mvp1
         GL.VertexAttribPointer(3, 4, VertexAttribPointerType.Float, false, stride, baseOffset + 16);   // Mvp2
         GL.VertexAttribPointer(4, 4, VertexAttribPointerType.Float, false, stride, baseOffset + 32);   // Color1
@@ -1132,7 +1152,8 @@ internal class Renderer : IRenderer, IDisposable
                         VertexBufferAllocation = vtxAlloc,
                         IndexBufferAllocation = idxAlloc,
                         VertexCount = vertices.Length,
-                        IndexCount = indices.Length
+                        IndexCount = indices.Length,
+                        IsUnitQuad = IsUnitQuad(vertices, indices, vtxAlloc.Offset)
                     };
                     break;
                 }
@@ -1148,6 +1169,34 @@ internal class Renderer : IRenderer, IDisposable
         }
     }
     
+    /// <summary>
+    /// Whether a mesh is the unit quad that sprites are made of: the corners at -0.5 and 0.5, y up, with the texture coordinates u across and
+    /// v down, and the triangles 0, 1, 2 and 3, 2, 1. The uber program draws such a mesh without reading it, from the corner of gl_VertexID.
+    /// </summary>
+    /// <param name="indexBase">What was added to the indices to make them the buffer's.</param>
+    private static bool IsUnitQuad(Vertex[] vertices, int[] indices, int indexBase)
+    {
+        if (vertices.Length != 4 || indices.Length != 6)
+            return false;
+
+        ReadOnlySpan<int> triangles = [0, 1, 2, 3, 2, 1];
+        for (var i = 0; i < 6; i++)
+        {
+            if (indices[i] - indexBase != triangles[i])
+                return false;
+        }
+
+        ReadOnlySpan<float> corners = [-0.5f, 0.5f, 0f, 0f, 0.5f, 0.5f, 1f, 0f, -0.5f, -0.5f, 0f, 1f, 0.5f, -0.5f, 1f, 1f];
+        for (var i = 0; i < 4; i++)
+        {
+            var vertex = vertices[i];
+            if (vertex.Position.X != corners[i * 4] || vertex.Position.Y != corners[i * 4 + 1] || vertex.UV.X != corners[i * 4 + 2] || vertex.UV.Y != corners[i * 4 + 3])
+                return false;
+        }
+
+        return true;
+    }
+
     private void UpdateTextureData()
     {
         while (textureLifecycleCommands.TryDequeue(out var command))
@@ -1352,13 +1401,6 @@ internal class Renderer : IRenderer, IDisposable
 
     private void UpdateTextData()
     {
-        if (textInstanceBufferHandle == 0)
-        {
-            textInstanceBufferHandle = GL.GenBuffer();
-            GL.BindBuffer(BufferTarget.ArrayBuffer, textInstanceBufferHandle);
-            GL.BufferData(BufferTarget.ArrayBuffer, glyphBufferAllocator.Capacity * Unsafe.SizeOf<RenderGlyph>(), IntPtr.Zero, BufferUsage.DynamicDraw);
-        }
-        
         while (textLifecycleCommands.TryDequeue(out var command))
         {
             switch (command.Type)
@@ -1368,37 +1410,16 @@ internal class Renderer : IRenderer, IDisposable
                     var renderGlyphs = command.Data;
                     Debug.Assert(renderGlyphs != null);
 
-                    var glyphAlloc = glyphBufferAllocator.Allocate(renderGlyphs.Length, (oldCapacity, newCapacity) =>
-                    {
-                        var newBufferHandle = GL.GenBuffer();
-                        GL.BindBuffer(BufferTarget.ArrayBuffer, newBufferHandle);
-                        GL.BufferData(BufferTarget.ArrayBuffer, newCapacity * Unsafe.SizeOf<RenderGlyph>(), IntPtr.Zero, BufferUsage.DynamicDraw);
-                        
-                        GL.BindBuffer(BufferTarget.CopyReadBuffer, textInstanceBufferHandle);
-                        GL.BindBuffer(BufferTarget.CopyWriteBuffer, newBufferHandle);
-                        GL.CopyBufferSubData(CopyBufferSubDataTarget.CopyReadBuffer, CopyBufferSubDataTarget.CopyWriteBuffer, IntPtr.Zero, IntPtr.Zero, oldCapacity * Unsafe.SizeOf<RenderGlyph>());
-                        
-                        GL.DeleteBuffer(textInstanceBufferHandle);
-                        textInstanceBufferHandle = newBufferHandle;
-
-                        logger.LogInformation("Glyph buffer reallocated from {OldCapacity} to {NewCapacity}", oldCapacity, newCapacity);
-                    });
-
-                    GL.BindBuffer(BufferTarget.ArrayBuffer, textInstanceBufferHandle);
-                    GL.BufferSubData(BufferTarget.ArrayBuffer, glyphAlloc.Offset * Unsafe.SizeOf<RenderGlyph>(), renderGlyphs.Length * Unsafe.SizeOf<RenderGlyph>(), renderGlyphs);
-                    
                     textInfos.EnsureCount(command.Id + 1);
                     textInfos[command.Id] = new TextInfo
                     {
-                        Allocation = glyphAlloc,
-                        GlyphCount = renderGlyphs.Length
+                        GlyphCount = renderGlyphs.Length,
+                        Glyphs = renderGlyphs
                     };
                     break;
                 }
                 case LifecycleCommandType.Destroy:
                 {
-                    var textInfo = textInfos[command.Id];
-                    glyphBufferAllocator.Free(textInfo.Allocation);
                     textInfos[command.Id] = default;
                     break;
                 }

@@ -394,6 +394,17 @@ public unsafe class DesktopWindow : IDisposable
     private static int windowCount;
     private static bool bindingsLoaded;
 
+    private static ANGLEPlatformType? AnglePlatformFromEnvironment()
+        => Environment.GetEnvironmentVariable("RALSEI_ANGLE")?.ToLowerInvariant() switch
+        {
+            "vulkan" => ANGLEPlatformType.Vulkan,
+            "d3d11" => ANGLEPlatformType.D3D11,
+            "d3d9" => ANGLEPlatformType.D3D9,
+            "opengl" => ANGLEPlatformType.OpenGL,
+            "gles" => ANGLEPlatformType.OpenGLES,
+            _ => null
+        };
+
     /// <param name="input">Told what the user does to the window.</param>
     /// <param name="contextConfig">The OpenGL context to make, or nothing for a window that is made for Vulkan, which has no context.</param>
     /// <param name="primary">The first window of the app, which the test tools (picture, scripted input) are for.</param>
@@ -415,6 +426,11 @@ public unsafe class DesktopWindow : IDisposable
             capturePath = Path.ChangeExtension(picture, ".window" + Path.GetExtension(picture));
             captureFrame = int.TryParse(Environment.GetEnvironmentVariable("RALSEI_CAPTURE_FRAME_WINDOW") ?? Environment.GetEnvironmentVariable("RALSEI_CAPTURE_FRAME"), out var secondaryFrame) ? secondaryFrame : 120;
         }
+
+        // RALSEI_ANGLE=vulkan|d3d11|d3d9|opengl|gles: the OpenGL ES renderer runs on ANGLE (libEGL and libGLESv2 next to the program or on the path) over that API, not on the driver's own ES
+        var angle = AnglePlatformFromEnvironment();
+        if (windowCount == 0 && angle is { } platform)
+            GLFW.InitHint(InitHintANGLEPlatformType.ANGLEPlatformType, platform);
 
         if (windowCount == 0 && !GLFW.Init())
             throw new Exception("Failed to initialize GLFW");
@@ -450,6 +466,8 @@ public unsafe class DesktopWindow : IDisposable
             if (contextConfig.IsES)
             {
                 GLFW.WindowHint(WindowHintClientApi.ClientApi, ClientApi.OpenGlEsApi);
+                if (angle is not null)
+                    GLFW.WindowHint(WindowHintContextApi.ContextCreationApi, ContextApi.EglContextApi);
             }
             else
             {

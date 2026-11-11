@@ -69,7 +69,7 @@ An app is a `ServiceCollection`. The pieces register themselves with extension m
 |---|---|---|---|
 | 1 | `services.AddRalsei(Action<ResourceSourceFactories>? = null)` | `Ralsei` | `ResourceLoader`, `MeshService`, `FontService`, `TextShaper`, `SceneHost`, `InputManager`, `CanvasOptions` (a default one, via `TryAdd`), `Canvas` and `ICanvas`, `AtlasBuilder` (transient), `GameDirector`. Defaults (via `TryAdd`, so a host can override them): `NullAudioPlayer`, `NullTrackPlayer`, `MemoryClipboard`, `NullWindowControl`, `NullWindowManager`. Returns a `RalseiBuilder`. |
 | 2 | `builder.UseSharedShaders()` | `Ralsei.Rendering.Common` | Makes the shared GLSL available to `ShaderLoader`. |
-| 3 | `builder.UseOpenGLRenderer()` / `UseOpenGLESRenderer()` / `UseVulkanRenderer()` | each renderer | `RenderingFactory` (singleton) and `IRenderingFactory` (the same instance, by alias), `IFrameQueue` (a `FrameQueue`, scoped to the window), `BuiltinRenderingPrimitive` (internal) where the backend has one, `IRenderer` (scoped), and that backend's embedded shaders. |
+| 3 | `builder.UseOpenGLRenderer()` / `UseOpenGLESRenderer()` / `UseVulkanRenderer()` | each renderer | `RenderingFactory` (singleton) and `IRenderingFactory` (the same instance, by alias), `IFrameQueue` (a `FrameQueue`, scoped to the window), `BuiltinRenderingPrimitive` (internal), `IRenderer` (scoped), and that backend's embedded shaders. |
 | 4 | The host registers its surfaces | host | `IOpenGLSurface` or `IVulkanSurface`, plus whatever it overrides (`IAudioPlayer`, `ITrackPlayer`, `IClipboard`, `IWindowControl`, `IWindowManager`). |
 | 5 | The app registers `IGameStartup` | app | Says which scene to begin with. |
 
@@ -315,7 +315,7 @@ Each backend is registered by one call (the static class `RalseiOptionsBuilderEx
 | Backend | Register with | `IRenderer` class | Needs from the host |
 |---|---|---|---|
 | OpenGL | `UseOpenGLRenderer()` | `Renderer(RenderingFactory, BuiltinRenderingPrimitive, IOpenGLSurface, ResourceLoader, ILogger<Renderer>)` | `IOpenGLSurface` |
-| OpenGL ES | `UseOpenGLESRenderer()` | `Renderer(RenderingFactory, IOpenGLSurface, ResourceLoader, ILogger<Renderer>)` | `IOpenGLSurface` |
+| OpenGL ES | `UseOpenGLESRenderer()` | `Renderer(RenderingFactory, BuiltinRenderingPrimitive, IOpenGLSurface, ResourceLoader, ILogger<Renderer>)` | `IOpenGLSurface` |
 | Vulkan | `UseVulkanRenderer()` | `Renderer(RenderingFactory, BuiltinRenderingPrimitive, IVulkanSurface, ResourceLoader, ILogger<Renderer>)` | `IVulkanSurface` |
 
 All three renderer classes are `internal`: an app gets one as `IRenderer` (`ProcessFrame(IDrawDataProvider)`, `Dispose()`), which is safe to dispose more than once.
