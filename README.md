@@ -1,7 +1,6 @@
 # RALSEI
 
-> **RALSEI** (Radical Animation Layering & Simulation Engine Infrastructure) is a lightweight, fast 2D engine for .NET, with three
-> rendering backends, a game loop with scenes, input, audio and text, with a desktop host to run it all on.
+> **RALSEI** (Radical Animation Layering & Simulation EngIne) is a lightweight, fast 2D engine for modern .NET.
 
 ## Features
 
