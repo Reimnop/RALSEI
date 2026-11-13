@@ -6,7 +6,10 @@ namespace Swag.Service;
 public static class PlaybackObjectHelper
 {
     public static float CalculateEndTime(float startTime, float duration, AutoKillType autoKillType, float autoKillOffset)
-        => autoKillType switch
+    {
+        const float minimumDuration = 0.1f;
+        
+        var endTime = autoKillType switch
         {
             AutoKillType.NoAutoKill => float.PositiveInfinity,
             AutoKillType.LastKeyframe => startTime + duration,
@@ -15,6 +18,9 @@ public static class PlaybackObjectHelper
             AutoKillType.SongTime => autoKillOffset,
             _ => float.PositiveInfinity // no auto kill by default
         };
+
+        return Math.Max(endTime, startTime + minimumDuration);
+    }
     
     public static IEnumerable<BakedKeyframe<BeatmapObjectIndexedColor>> ResolveColorKeyframes(IEnumerable<Data.Keyframe<BeatmapObjectIndexedColor>> keyframes)
     {
