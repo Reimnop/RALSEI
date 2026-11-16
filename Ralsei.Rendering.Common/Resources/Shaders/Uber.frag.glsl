@@ -18,7 +18,10 @@ RALSEI_LOCATION(5) flat in int vShapeIndex;
 RALSEI_LOCATION(6) flat in RalseiTexture vTexture;
 RALSEI_LOCATION(7) flat in vec4 vFog;
 RALSEI_LOCATION(8) flat in int vTextureFlags;
+#ifndef RALSEI_SHADER_CLIP_DISTANCE
 RALSEI_LOCATION(9) flat in uvec2 vClip;
+RALSEI_LOCATION(10) in vec2 vPixel;
+#endif
 
 // The glyphs' data, which GL ES reads from textures (it has no storage buffers)
 #ifdef RALSEI_GLES
@@ -37,8 +40,11 @@ RALSEI_STORAGE_BUFFER(7) ShapeEntryBuffer { ShapeEntry shapeEntries[]; };
 #include "Common/GlyphCoverage.glsl"
 
 void main() {
-    if (isOutsideClip(vClip))
+#ifndef RALSEI_SHADER_CLIP_DISTANCE
+    vec4 bounds = unpackClip(vClip);
+    if (vPixel.x < bounds.x || vPixel.y < bounds.y || vPixel.x >= bounds.z || vPixel.y >= bounds.w)
         discard;
+#endif
 
     if (vRenderType == 1) {
         // Text path: glyph (vShapeIndex >= 0) or mark rectangle (-1)

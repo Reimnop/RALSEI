@@ -41,6 +41,9 @@ internal sealed unsafe class VulkanContext : IDisposable
     public VkPhysicalDeviceLimits Limits { get; private set; }
     public bool SupportsMultiDrawIndirect { get; private set; }
 
+    /// <summary>Whether shaders can write clip distances. Without, draws are clipped in the fragment shader.</summary>
+    public bool SupportsShaderClipDistance { get; private set; }
+
     /// <summary>Whether every texture can live in one descriptor array that any draw indexes (descriptor indexing): see <see cref="BindlessTextureCapacity"/>.</summary>
     public bool SupportsBindlessTextures { get; private set; }
 
@@ -506,6 +509,7 @@ internal sealed unsafe class VulkanContext : IDisposable
         VkPhysicalDeviceFeatures2 supported = new() { sType = VkStructureType.StructureTypePhysicalDeviceFeatures2, pNext = &supported12 };
         Vk.GetPhysicalDeviceFeatures2(PhysicalDevice, &supported);
         SupportsMultiDrawIndirect = supported.features.multiDrawIndirect != 0;
+        SupportsShaderClipDistance = supported.features.shaderClipDistance != 0 && Environment.GetEnvironmentVariable("RALSEI_NO_CLIP_DISTANCE") is null;
 
         // Bindless textures need an array of them that is indexed by anything, with slots that nothing is written to, that can be
         // written to while frames that do not use the slot are being drawn
@@ -550,6 +554,7 @@ internal sealed unsafe class VulkanContext : IDisposable
             pNext = &features13
         };
         features2.features.shaderStorageImageExtendedFormats = VkUtil.True;
+        features2.features.shaderClipDistance = SupportsShaderClipDistance ? VkUtil.True : VkUtil.False;
         features2.features.multiDrawIndirect = SupportsMultiDrawIndirect ? VkUtil.True : VkUtil.False;
 
         var extensions = new List<string>();

@@ -45,9 +45,13 @@ compile() {
 }
 
 # The textures are read either bindless (one array of all of them, see Texturing.glsl) or, on a device that cannot, a page of 16 at a time
-compile Uber.vert vert Uber.vert RALSEI_BINDLESS
-compile Uber.frag frag Uber.frag RALSEI_BINDLESS
-compile Uber.frag frag Uber.paged.frag RALSEI_TEXTURE_PAGE_SIZE=16
+# Draws are cut to their clips with clip distances, or in the fragment shader (.discard) on a device without shaderClipDistance
+compile Uber.vert vert Uber.vert RALSEI_BINDLESS RALSEI_SHADER_CLIP_DISTANCE
+compile Uber.frag frag Uber.frag RALSEI_BINDLESS RALSEI_SHADER_CLIP_DISTANCE
+compile Uber.frag frag Uber.paged.frag RALSEI_TEXTURE_PAGE_SIZE=16 RALSEI_SHADER_CLIP_DISTANCE
+compile Uber.vert vert Uber.discard.vert RALSEI_BINDLESS
+compile Uber.frag frag Uber.discard.frag RALSEI_BINDLESS
+compile Uber.frag frag Uber.paged.discard.frag RALSEI_TEXTURE_PAGE_SIZE=16
 
 # Every post-processing pass is a compute shader
 while read -r file; do

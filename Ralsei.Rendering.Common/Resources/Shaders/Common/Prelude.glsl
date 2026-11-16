@@ -20,6 +20,11 @@
 #endif
 #endif
 
+// Draws cut to their clips with clip distances (see Clip.glsl), where the host found that the API has them
+#if defined(RALSEI_SHADER_CLIP_DISTANCE) && defined(RALSEI_GLES)
+#extension GL_EXT_clip_cull_distance : require
+#endif
+
 #ifdef RALSEI_GLES
 // GL ES has no default precision for floats in fragment shaders, or for samplers in any shader
 precision highp float;

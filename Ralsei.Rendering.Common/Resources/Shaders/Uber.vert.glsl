@@ -3,6 +3,7 @@
 #include "Common/Glyph.glsl"
 #include "Common/TextureRef.glsl"
 #include "Common/GlyphVertex.glsl"
+#include "Common/Clip.glsl"
 
 layout(location = 0) in vec2 aPos;
 layout(location = 1) in vec2 aUv;
@@ -16,7 +17,10 @@ RALSEI_LOCATION(5) flat out int vShapeIndex;
 RALSEI_LOCATION(6) flat out RalseiTexture vTexture;
 RALSEI_LOCATION(7) flat out vec4 vFog;
 RALSEI_LOCATION(8) flat out int vTextureFlags;
+#ifndef RALSEI_SHADER_CLIP_DISTANCE
 RALSEI_LOCATION(9) flat out uvec2 vClip;
+RALSEI_LOCATION(10) out vec2 vPixel;
+#endif
 
 struct MultiDrawItem {
     int renderType;
@@ -180,6 +184,21 @@ void meshCorner(out vec2 position, out vec2 uv) {
 
 #endif
 
+// Cuts the draw to its clip: the vertex is inside it where all four distances are positive
+void applyClip(uvec2 clip) {
+    vec2 pixel = viewportPixel(gl_Position, uViewportSize);
+#ifdef RALSEI_SHADER_CLIP_DISTANCE
+    vec4 bounds = unpackClip(clip);
+    gl_ClipDistance[0] = pixel.x - bounds.x;
+    gl_ClipDistance[1] = pixel.y - bounds.y;
+    gl_ClipDistance[2] = bounds.z - pixel.x;
+    gl_ClipDistance[3] = bounds.w - pixel.y;
+#else
+    vClip = clip;
+    vPixel = pixel;
+#endif
+}
+
 void main() {
     MultiDrawItem item = fetchItem();
 
@@ -192,7 +211,6 @@ void main() {
     vTexture = RALSEI_NO_TEXTURE;
     vFog = vec4(0.0);
     vTextureFlags = 0;
-    vClip = uvec2(0u, 0xFFFFFFFFu);
 
     if (item.renderType == 1) { // text path
         TextDrawItem text;
@@ -201,7 +219,6 @@ void main() {
 
         vColor1 = text.color * glyph.color;
         vShapeIndex = glyph.shapeEntryIndex;
-        vClip = uvec2(text.clipMin, text.clipMax);
 
         mat3x2 finalMvp = mult3x2(text.mvp, glyph.transform);
 
@@ -219,6 +236,8 @@ void main() {
             vTexCoord = corner;
             gl_Position = vec4(clipPos, toDepth(text.z), 1.0);
         }
+
+        applyClip(uvec2(text.clipMin, text.clipMax));
     } else { // mesh path
         MeshDrawItem mesh = fetchMesh(item);
 
@@ -238,8 +257,8 @@ void main() {
         vColor1 = mesh.color1;
         vColor2 = mesh.color2;
         vRenderMode = mesh.renderMode;
-        vClip = uvec2(mesh.clipMin, mesh.clipMax);
 
         gl_Position = vec4(vec2(mesh.mvp * vec3(position, 1.0)), toDepth(mesh.z), 1.0);
+        applyClip(uvec2(mesh.clipMin, mesh.clipMax));
     }
 }

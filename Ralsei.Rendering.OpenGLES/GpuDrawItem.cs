@@ -49,9 +49,9 @@ internal struct GpuDrawItem
     /// </summary>
     public const int QuadFlag = 4;
 
-    /// <summary>Where the draw shows, in pixels of the target: left and top (x in the low 16 bits), see <see cref="Common.ClipBounds.Pack"/>.</summary>
+    /// <summary>Where the draw shows, in pixels of the pass viewport: left and bottom (x in the low 16 bits), see <see cref="Common.ClipBounds.Pack"/>.</summary>
     [FieldOffset(112)] public uint ClipMin;
 
-    /// <summary>Right and bottom, packed the same way. Fragments at or past it are not drawn.</summary>
+    /// <summary>Right and top, packed the same way. Pixels at or past it are not drawn.</summary>
     [FieldOffset(116)] public uint ClipMax;
 }

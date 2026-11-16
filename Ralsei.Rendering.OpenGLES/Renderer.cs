@@ -38,6 +38,11 @@ internal class Renderer : IRenderer, IDisposable
     private const int FirstTextureSlotUnit = 4;
     private const int MaxTexturePageSize = 16;
 
+    // The clip distances Uber.vert writes: left, bottom, right and top. GL_EXT_clip_cull_distance has no names in the bindings.
+    private const int ClipDistanceCount = 4;
+    private const int ClipDistance0Ext = 0x3000;     // GL_CLIP_DISTANCE0_EXT
+    private const int MaxClipDistancesExt = 0x0D32;  // GL_MAX_CLIP_DISTANCES_EXT
+
     private struct MeshInfo
     {
         public Allocation VertexBufferAllocation;
@@ -132,6 +137,7 @@ internal class Renderer : IRenderer, IDisposable
 
     private readonly List<TextureInfo?> textureInfos = [];
     private readonly int texturePageSize;
+    private readonly bool clipDistancesSupported;
     private readonly TexturePager texturePager = new();
     
     private readonly List<TextInfo> textInfos = [];
@@ -184,7 +190,15 @@ internal class Renderer : IRenderer, IDisposable
             logger.LogInformation("Textures bound at once: {PageSize}", texturePageSize);
             var pageSizeDefine = new KeyValuePair<string, string?>("RALSEI_TEXTURE_PAGE_SIZE", texturePageSize.ToString(CultureInfo.InvariantCulture));
 
-            programHandle = LoaderUtil.LoadShaderProgram(loader, "Uber.vert", "Uber.frag", pageSizeDefine);
+            // The draws are cut to their clips with clip distances, if the extension has enough of them
+            clipDistancesSupported = SupportsExtension("GL_EXT_clip_cull_distance") && GL.GetInteger((GetPName) MaxClipDistancesExt) >= ClipDistanceCount &&
+                                     Environment.GetEnvironmentVariable("RALSEI_NO_CLIP_DISTANCE") is null;
+            logger.LogInformation(clipDistancesSupported ? "Draws are clipped with clip distances" : "Draws are clipped in the fragment shader");
+            KeyValuePair<string, string?>[] defines = clipDistancesSupported
+                ? [pageSizeDefine, new("RALSEI_SHADER_CLIP_DISTANCE", null)]
+                : [pageSizeDefine];
+
+            programHandle = LoaderUtil.LoadShaderProgram(loader, "Uber.vert", "Uber.frag", defines);
             viewportSizeUniformLocation = GL.GetUniformLocation(programHandle, "uViewportSize");
 
             GL.UseProgram(programHandle);
@@ -626,6 +640,13 @@ internal class Renderer : IRenderer, IDisposable
         GL.Disable(EnableCap.Blend);
         GL.Enable(EnableCap.DepthTest);
 
+        // The shader cuts draws to their clips with clip distances, which only its draws write
+        if (clipDistancesSupported)
+        {
+            for (var i = 0; i < ClipDistanceCount; i++)
+                GL.Enable((EnableCap) (ClipDistance0Ext + i));
+        }
+
         RenderDrawDataList(
             CollectionsMarshal.AsSpan(opaqueDrawCommands),
             drawData,
@@ -642,6 +663,12 @@ internal class Renderer : IRenderer, IDisposable
             camera);
 
         GL.DepthMask(true);
+
+        if (clipDistancesSupported)
+        {
+            for (var i = 0; i < ClipDistanceCount; i++)
+                GL.Disable((EnableCap) (ClipDistance0Ext + i));
+        }
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, postProcessFboHandle);
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, postProcessTextureHandle1, 0);
@@ -1263,6 +1290,18 @@ internal class Renderer : IRenderer, IDisposable
                 TextureAddressMode.Repeat => (int) All.Repeat,
                 _ => throw new ArgumentOutOfRangeException(nameof(wrapMode), wrapMode, null)
             };
+    }
+
+    private static bool SupportsExtension(string name)
+    {
+        var count = GL.GetInteger(GetPName.NumExtensions);
+        for (var i = 0; i < count; i++)
+        {
+            if (GL.GetStringi(StringName.Extensions, (uint) i) == name)
+                return true;
+        }
+
+        return false;
     }
 
     private void UpdateFontData()

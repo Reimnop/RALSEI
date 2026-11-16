@@ -65,6 +65,9 @@ internal class Renderer : IRenderer, IDisposable
     private const int MsaaSamples = 4;
     private const int MaxOverlays = 10;
 
+    // The clip distances Uber.vert writes: left, bottom, right and top
+    private const int ClipDistanceCount = 4;
+
     // Textures: bindless, shaders read any texture by handle. Otherwise only so many can be bound at once, and draws are divided into pages by texture; bound to the first texture units.
     private const int MaxTexturePageSize = 16;
 
@@ -88,6 +91,7 @@ internal class Renderer : IRenderer, IDisposable
 
     private readonly List<TextureInfo?> textureInfos = [];
     private readonly bool bindlessTexturesSupported;
+    private readonly bool clipDistancesSupported;
     private readonly int texturePageSize;
     private readonly TexturePager texturePager = new();
     private readonly List<PageDraw> pageDraws = [];
@@ -231,6 +235,12 @@ internal class Renderer : IRenderer, IDisposable
             multiDrawMeshItemsBufferHandle = GL.CreateBuffer();
             multiDrawTextItemsBufferHandle = GL.CreateBuffer();
 
+            // The draws are cut to their clips with clip distances, if there are enough of them
+            clipDistancesSupported = GL.GetInteger(GetPName.MaxClipDistances) >= ClipDistanceCount &&
+                                     Environment.GetEnvironmentVariable("RALSEI_NO_CLIP_DISTANCE") is null;
+            logger.LogInformation(clipDistancesSupported ? "Draws are clipped with clip distances" : "Draws are clipped in the fragment shader");
+            KeyValuePair<string, string?>[] clipDefines = clipDistancesSupported ? [new("RALSEI_SHADER_CLIP_DISTANCE", null)] : [];
+
             // The shaders read textures one of two ways, told with a define
             bindlessTexturesSupported = SupportsExtension("GL_ARB_bindless_texture") &&
                                Environment.GetEnvironmentVariable("RALSEI_NO_BINDLESS") is null;
@@ -238,7 +248,7 @@ internal class Renderer : IRenderer, IDisposable
             {
                 logger.LogInformation("Textures are bindless");
                 programHandle = LoaderUtil.LoadShaderProgram(loader, "Uber.vert", "Uber.frag",
-                    new KeyValuePair<string, string?>("RALSEI_BINDLESS", null));
+                    [.. clipDefines, new KeyValuePair<string, string?>("RALSEI_BINDLESS", null)]);
             }
             else
             {
@@ -247,7 +257,7 @@ internal class Renderer : IRenderer, IDisposable
                     texturePageSize = Math.Min(texturePageSize, requestedPageSize); // to try what many pages do
                 logger.LogInformation("Textures are bound {PageSize} at a time", texturePageSize);
                 programHandle = LoaderUtil.LoadShaderProgram(loader, "Uber.vert", "Uber.frag",
-                    new KeyValuePair<string, string?>("RALSEI_TEXTURE_PAGE_SIZE", texturePageSize.ToString(CultureInfo.InvariantCulture)));
+                    [.. clipDefines, new KeyValuePair<string, string?>("RALSEI_TEXTURE_PAGE_SIZE", texturePageSize.ToString(CultureInfo.InvariantCulture))]);
 
                 var texturesUniformLocation = GL.GetUniformLocation(programHandle, "uTextures");
                 GL.UseProgram(programHandle);
@@ -637,6 +647,13 @@ internal class Renderer : IRenderer, IDisposable
 
         GL.UseProgram(programHandle);
 
+        // The shader cuts draws to their clips with clip distances, which only its draws write
+        if (clipDistancesSupported)
+        {
+            for (var i = 0; i < ClipDistanceCount; i++)
+                GL.Enable((EnableCap) ((int) EnableCap.ClipDistance0 + i));
+        }
+
         // Set viewport-size uniform for sub-pixel dilation in the text vertex shader
         GL.Uniform2f(viewportSizeUniformLocation, viewport.Enabled ? viewport.Width : currentFboSize.X, viewport.Enabled ? viewport.Height : currentFboSize.Y);
 
@@ -674,6 +691,12 @@ internal class Renderer : IRenderer, IDisposable
             camera);
 
         GL.DepthMask(true);
+
+        if (clipDistancesSupported)
+        {
+            for (var i = 0; i < ClipDistanceCount; i++)
+                GL.Disable((EnableCap) ((int) EnableCap.ClipDistance0 + i));
+        }
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
 

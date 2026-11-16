@@ -7,14 +7,12 @@ namespace Ralsei.Rendering.Common;
 public static class ClipBounds
 {
     /// <summary>
-    /// The part of a target of <paramref name="size"/> that <paramref name="clip"/> leaves of a pass drawn in <paramref name="part"/> (a
-    /// disabled one is the whole target), counting rows from the bottom as the scissor does: left and top, and right and bottom, each pair
-    /// in the two halves of a uint (x in the low half). Clips are in pixels of the part of the target the pass is in, and nothing shows outside it.
+    /// The part of a pass's viewport that <paramref name="clip"/> leaves (<paramref name="part"/> is the part of a target of
+    /// <paramref name="size"/> the pass is drawn in, the whole target if disabled), counting from the viewport's bottom-left corner: left and
+    /// bottom, and right and top, each pair in the two halves of a uint (x in the low half). Clips are in pixels of the viewport.
     /// </summary>
     public static (uint Min, uint Max) Pack(ClipRect clip, ClipRect part, Vector2i size)
     {
-        var originX = part.Enabled ? part.X : 0;
-        var originY = part.Enabled ? part.Y : 0;
         var width = part.Enabled ? part.Width : size.X;
         var height = part.Enabled ? part.Height : size.Y;
         var left = 0;
@@ -30,10 +28,10 @@ public static class ClipBounds
         }
 
         // The rows start at the bottom
-        var x0 = Math.Clamp(originX + left, 0, 0xFFFF);
-        var x1 = Math.Clamp(originX + right, 0, 0xFFFF);
-        var y0 = Math.Clamp(size.Y - (originY + bottom), 0, 0xFFFF);
-        var y1 = Math.Clamp(size.Y - (originY + top), 0, 0xFFFF);
+        var x0 = Math.Clamp(left, 0, 0xFFFF);
+        var x1 = Math.Clamp(right, 0, 0xFFFF);
+        var y0 = Math.Clamp(height - bottom, 0, 0xFFFF);
+        var y1 = Math.Clamp(height - top, 0, 0xFFFF);
         return ((uint) x0 | (uint) y0 << 16, (uint) x1 | (uint) y1 << 16);
     }
 }

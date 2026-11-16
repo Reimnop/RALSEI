@@ -1960,8 +1960,11 @@ internal sealed unsafe class Renderer : IRenderer, IDisposable
         VkUtil.Check(Vk.CreatePipelineLayout(context.Device, &layoutInfo, null, &pipelineLayout), "vkCreatePipelineLayout");
         uberPipelineLayout = pipelineLayout;
 
-        var vertexModule = ShaderUtil.CreateModule(context, loader, "Uber.vert");
-        var fragmentModule = ShaderUtil.CreateModule(context, loader, bindlessTextures ? "Uber.frag" : "Uber.paged.frag");
+        // Compiled with and without RALSEI_SHADER_CLIP_DISTANCE, see compile-shaders
+        var clip = context.SupportsShaderClipDistance ? "" : ".discard";
+        logger.LogInformation(context.SupportsShaderClipDistance ? "Draws are clipped with clip distances" : "Draws are clipped in the fragment shader");
+        var vertexModule = ShaderUtil.CreateModule(context, loader, $"Uber{clip}.vert");
+        var fragmentModule = ShaderUtil.CreateModule(context, loader, bindlessTextures ? $"Uber{clip}.frag" : $"Uber.paged{clip}.frag");
         try
         {
             opaquePipeline = CreateUberPipeline(vertexModule, fragmentModule, transparent: false);
