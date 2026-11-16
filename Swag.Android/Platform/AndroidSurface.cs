@@ -5,6 +5,7 @@ using OpenTK.Graphics.OpenGLES2;
 using Ralsei.Core.Data;
 using Ralsei.Mathematics;
 using Ralsei.Platform.OpenGL;
+using All = OpenTK.Graphics.Egl.All;
 
 namespace Swag.Android.Platform;
 
@@ -25,8 +26,10 @@ public sealed class AndroidSurface : IOpenGLSurface, IDisposable
     {
         get
         {
-            if (!Egl.QuerySurface(eglDisplay, eglSurface, Egl.WIDTH, out var width) ||
-                !Egl.QuerySurface(eglDisplay, eglSurface, Egl.HEIGHT, out var height))
+            int width = 0, height = 0;
+            
+            if (!Egl.QuerySurface(eglDisplay, eglSurface, SurfaceQueryAttribute.Width, ref width) ||
+                !Egl.QuerySurface(eglDisplay, eglSurface, SurfaceQueryAttribute.Height, ref height))
                 throw new SurfaceLostException("The size of the EGL surface can not be queried any more");
 
             return new Vector2i(width, height);
@@ -40,9 +43,9 @@ public sealed class AndroidSurface : IOpenGLSurface, IDisposable
     private readonly AndroidSurfaceSettings surfaceSettings;
     private readonly NativeWindow nativeWindow;
 
-    private readonly IntPtr eglDisplay;
-    private readonly IntPtr eglContext;
-    private IntPtr eglSurface;
+    private readonly EGLDisplay eglDisplay;
+    private readonly EGLContext eglContext;
+    private EGLSurface eglSurface;
 
     private volatile bool abandoned;
 
@@ -61,40 +64,48 @@ public sealed class AndroidSurface : IOpenGLSurface, IDisposable
 
         try
         {
-            eglDisplay = Egl.GetDisplay(Egl.DEFAULT_DISPLAY);
-            if (eglDisplay == IntPtr.Zero || !Egl.Initialize(eglDisplay, out _, out _))
+            eglDisplay = Egl.GetDisplay((IntPtr) All.DefaultDisplay);
+            if (eglDisplay.Value == IntPtr.Zero || !Egl.Initialize(eglDisplay, out _, out _))
                 throw new InvalidOperationException("Failed to initialize EGL");
 
             int[] configAttribs =
             [
-                Egl.RENDERABLE_TYPE, glSettings.MajorVersion == 3 ? Egl.OPENGL_ES3_BIT : Egl.OPENGL_ES2_BIT,
-                Egl.SURFACE_TYPE,    Egl.WINDOW_BIT,
-                Egl.RED_SIZE,        8,
-                Egl.GREEN_SIZE,      8,
-                Egl.BLUE_SIZE,       8,
-                Egl.ALPHA_SIZE,      0,
-                Egl.NONE
+                (int) ConfigAttribute.RenderableType, glSettings.MajorVersion == 3 
+                    ? (int) RenderableTypeMask.OpenglEs3Bit
+                    : (int) RenderableTypeMask.OpenglEs2Bit,
+                (int) ConfigAttribute.SurfaceType,    (int) SurfaceTypeMask.WindowBit,
+                (int) ConfigAttribute.RedSize,        8,
+                (int) ConfigAttribute.GreenSize,      8,
+                (int) ConfigAttribute.BlueSize,       8,
+                (int) ConfigAttribute.AlphaSize,      0,
+                (int) ConfigAttribute.None
             ];
 
-            var configs = new IntPtr[1];
-            if (!Egl.ChooseConfig(eglDisplay, configAttribs, configs, 1, out var configCount) || configCount < 1 || configs[0] == IntPtr.Zero)
+            var configs = new EGLConfig[1];
+            var configCounts = new int[1];
+            if (!Egl.ChooseConfig(eglDisplay, configAttribs, configs, 1, configCounts) || 
+                configCounts[0] < 1 || 
+                configs[0].Value == IntPtr.Zero)
                 throw new InvalidOperationException("Failed to choose an EGL config");
 
             var config = configs[0];
 
             int[] contextAttribs =
             [
-                Egl.CONTEXT_CLIENT_VERSION, glSettings.MajorVersion,
-                Egl.NONE
+                (int) ContextAttribute.ContextClientVersion, glSettings.MajorVersion,
+                (int) ContextAttribute.None
             ];
 
-            eglContext = Egl.CreateContext(eglDisplay, config, IntPtr.Zero, contextAttribs);
-            if (eglContext == IntPtr.Zero)
+            eglContext = Egl.CreateContext(eglDisplay, config, EGLContext.NoContext, contextAttribs);
+            if (eglContext.Value == IntPtr.Zero)
                 throw new InvalidOperationException("Failed to create an EGL context");
 
-            eglSurface = Egl.CreateWindowSurface(eglDisplay, config, nativeWindow.Handle, IntPtr.Zero);
-            if (eglSurface == IntPtr.Zero)
-                throw new SurfaceLostException("Failed to create an EGL surface for the window");
+            unsafe
+            {
+                eglSurface = Egl.CreateWindowSurface(eglDisplay, config, nativeWindow.Handle, (int*)0);
+                if (eglSurface.Value == IntPtr.Zero)
+                    throw new SurfaceLostException("Failed to create an EGL surface for the window");
+            }
 
             GLLoader.LoadBindings(new BindingsContext());
 
@@ -126,17 +137,17 @@ public sealed class AndroidSurface : IOpenGLSurface, IDisposable
 
     public void Dispose()
     {
-        if (eglDisplay != IntPtr.Zero)
+        if (eglDisplay.Value != IntPtr.Zero)
         {
-            Egl.MakeCurrent(eglDisplay, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            Egl.MakeCurrent(eglDisplay, EGLSurface.NoSurface, EGLSurface.NoSurface, EGLContext.NoContext);
 
-            if (eglSurface != IntPtr.Zero)
+            if (eglSurface.Value != IntPtr.Zero)
             {
                 Egl.DestroySurface(eglDisplay, eglSurface);
-                eglSurface = IntPtr.Zero;
+                eglSurface = EGLSurface.NoSurface;
             }
 
-            if (eglContext != IntPtr.Zero)
+            if (eglContext.Value != IntPtr.Zero)
                 Egl.DestroyContext(eglDisplay, eglContext);
 
             Egl.Terminate(eglDisplay);

@@ -1,10 +1,9 @@
 using OpenTK;
 using OpenTK.Graphics;
 using OpenTK.Graphics.Egl;
-using OpenTK.Graphics.OpenGLES2;
-using Ralsei.Core.Data;
 using Ralsei.Mathematics;
 using Ralsei.Platform.OpenGL;
+using All = OpenTK.Graphics.Egl.All;
 
 namespace Swag.Wasm;
 
@@ -24,83 +23,101 @@ public class WasmSurface : IOpenGLSurface, IDisposable
     {
         get
         {
-            Egl.QuerySurface(display, surface, Egl.WIDTH, out var width);
-            Egl.QuerySurface(display, surface, Egl.HEIGHT, out var height);
+            int width = 0, height = 0;
+
+            if (!Egl.QuerySurface(display, surface, SurfaceQueryAttribute.Width, ref width) ||
+                !Egl.QuerySurface(display, surface, SurfaceQueryAttribute.Height, ref height))
+                throw new InvalidOperationException("The size of the EGL surface can not be queried any more");
+
             return new Vector2i(width, height);
         }
     }
 
-    public bool IsContextLost { get; private set; }
+    public bool IsContextLost => Egl.GetCurrentContext() != context;
 
-    private readonly IntPtr display;
-    private readonly IntPtr context;
-    private readonly IntPtr surface;
+    private readonly EGLDisplay display;
+    private readonly EGLContext context;
+    private EGLSurface surface;
     
     public WasmSurface(OpenGLSettings glSettings)
     {
         if (!glSettings.IsES)
             throw new InvalidOperationException("Only OpenGL ES is supported on WebAssembly");
         
-        display = Egl.GetDisplay(IntPtr.Zero);
-        if (display == IntPtr.Zero)
+        display = Egl.GetDisplay((IntPtr) All.DefaultDisplay);
+        if (display.Value == IntPtr.Zero)
             throw new InvalidOperationException("Failed to get EGL display");
         
         if (!Egl.Initialize(display, out _, out _))
             throw new InvalidOperationException("Failed to initialize EGL");
         
-        var config = new[]
+        int[] configAttribs =
         {
-            Egl.RED_SIZE, 8,
-            Egl.GREEN_SIZE, 8,
-            Egl.BLUE_SIZE, 8,
-            Egl.ALPHA_SIZE, 0,
-            Egl.DEPTH_SIZE, 0,
-            Egl.STENCIL_SIZE, 0,
-            Egl.SURFACE_TYPE, Egl.WINDOW_BIT,
-            Egl.RENDERABLE_TYPE, glSettings.MajorVersion == 3 ? Egl.OPENGL_ES3_BIT : Egl.OPENGL_ES2_BIT,
-            Egl.SAMPLES, 0,
-            Egl.NONE
+            (int) ConfigAttribute.RenderableType, glSettings.MajorVersion == 3
+                ? (int) RenderableTypeMask.OpenglEs3Bit
+                : (int) RenderableTypeMask.OpenglEs2Bit,
+            (int) ConfigAttribute.SurfaceType, (int) SurfaceTypeMask.WindowBit,
+            (int) ConfigAttribute.RedSize, 8,
+            (int) ConfigAttribute.GreenSize, 8,
+            (int) ConfigAttribute.BlueSize, 8,
+            (int) ConfigAttribute.AlphaSize, 0,
+            (int) ConfigAttribute.None
         };
 
-        var configs = new IntPtr[1];
-        if (!Egl.ChooseConfig(display, config, configs, 1, out var numConfig))
+        var configs = new EGLConfig[1];
+        var configCounts = new int[1];
+        if (!Egl.ChooseConfig(display, configAttribs, configs, 1, configCounts) ||
+            configCounts[0] < 1 ||
+            configs[0].Value == IntPtr.Zero)
             throw new InvalidOperationException("Failed to choose EGL config");
-        
-        if (numConfig == 0)
-            throw new InvalidOperationException("No EGL configs found");
-        
-        var chosenConfig = configs[0];
-        
-        if (!Egl.BindAPI(RenderApi.ES))
-            throw new InvalidOperationException("Failed to bind ES API");
-        
-        var ctxAttribs = new[]
+
+        var config = configs[0];
+
+        int[] contextAttribs =
         {
-            Egl.CONTEXT_CLIENT_VERSION, glSettings.MajorVersion,
-            Egl.NONE
+            (int) ContextAttribute.ContextClientVersion, glSettings.MajorVersion,
+            (int) ContextAttribute.None
         };
 
-        context = Egl.CreateContext(display, chosenConfig, IntPtr.Zero, ctxAttribs);
-        if (context == IntPtr.Zero)
+        context = Egl.CreateContext(display, config, EGLContext.NoContext, contextAttribs);
+        if (context.Value == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create EGL context");
-        
-        surface = Egl.CreateWindowSurface(display, chosenConfig, IntPtr.Zero, IntPtr.Zero);
-        if (surface == IntPtr.Zero)
+
+        unsafe
+        {
+            surface = Egl.CreateWindowSurface(display, config, IntPtr.Zero, (int*)0);
+        }
+        if (surface.Value == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create EGL surface");
-        
+
         if (!Egl.MakeCurrent(display, surface, surface, context))
             throw new InvalidOperationException("Failed to make context current");
-        
+
         GLLoader.LoadBindings(new BindingsContext());
+    }
+
+    public void SwapBuffers()
+    {
+        if (!Egl.SwapBuffers(display, surface))
+            throw new InvalidOperationException("Failed to swap the buffers of the EGL surface");
     }
 
     public void Dispose()
     {
-        Egl.MakeCurrent(display, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-        Egl.DestroyContext(display, context);
-        Egl.DestroySurface(display, surface);
-        Egl.Terminate(display);
-        
-        IsContextLost = true;
+        if (display.Value != IntPtr.Zero)
+        {
+            Egl.MakeCurrent(display, EGLSurface.NoSurface, EGLSurface.NoSurface, EGLContext.NoContext);
+
+            if (surface.Value != IntPtr.Zero)
+            {
+                Egl.DestroySurface(display, surface);
+                surface = EGLSurface.NoSurface;
+            }
+
+            if (context.Value != IntPtr.Zero)
+                Egl.DestroyContext(display, context);
+
+            Egl.Terminate(display);
+        }
     }
 }

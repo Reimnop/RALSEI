@@ -15,11 +15,13 @@ internal static unsafe class VulkanLoader
             VKLoader.Init();
             return;
         }
+        
+        throw new NotImplementedException("We are too lazy to implement a proper Android loader, so Android breaks lmao");
 
-        VKLoader.VulkanHandle = NativeLibrary.Load("libvulkan.so");
-        if (!NativeLibrary.TryGetExport(VKLoader.VulkanHandle, "vkGetInstanceProcAddr", out var address))
-            throw new EntryPointNotFoundException("Could not load vkGetInstanceProcAddr.");
-
-        VkPointers._vkGetInstanceProcAddr_fnptr = (delegate* unmanaged<VkInstance, byte*, nint>) address;
+        // VKLoader.VulkanHandle = NativeLibrary.Load("libvulkan.so");
+        // if (!NativeLibrary.TryGetExport(VKLoader.VulkanHandle, "vkGetInstanceProcAddr", out var address))
+        //     throw new EntryPointNotFoundException("Could not load vkGetInstanceProcAddr.");
+        //
+        // VkPointers._vkGetInstanceProcAddr_fnptr = (delegate* unmanaged<VkInstance, byte*, nint>) address;
     }
 }

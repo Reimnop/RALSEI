@@ -34,7 +34,7 @@
   <ItemGroup>
     <!-- For NativeAOT-LLVM -->
     <PackageReference Include="Microsoft.DotNet.ILCompiler.LLVM" Version="10.0.0-*" />
-    <PackageReference Include="OpenTK.Graphics" Version="5.0.0-pre.11" />
+    <PackageReference Include="OpenTK.Graphics" Version="5.0.0-pre.16" />
     <PackageReference Include="runtime.$(NETCoreSdkPortableRuntimeIdentifier).Microsoft.DotNet.ILCompiler.LLVM" Version="10.0.0-*" />
   </ItemGroup>
   

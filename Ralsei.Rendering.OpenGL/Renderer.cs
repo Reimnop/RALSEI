@@ -87,7 +87,7 @@ internal class Renderer : IRenderer, IDisposable
     private readonly List<MeshInfo> meshInfos = [];
 
     private readonly List<TextureInfo?> textureInfos = [];
-    private readonly bool bindlessTextures;
+    private readonly bool bindlessTexturesSupported;
     private readonly int texturePageSize;
     private readonly TexturePager texturePager = new();
     private readonly List<PageDraw> pageDraws = [];
@@ -206,10 +206,10 @@ internal class Renderer : IRenderer, IDisposable
             vertexArrayHandle = GL.CreateVertexArray();
             
             vertexBufferHandle = GL.CreateBuffer();
-            GL.NamedBufferData(vertexBufferHandle, InitialVertexBufferCapacity * Unsafe.SizeOf<Vertex>(), IntPtr.Zero, VertexBufferObjectUsage.DynamicDraw);
+            GL.NamedBufferData(vertexBufferHandle, InitialVertexBufferCapacity * Unsafe.SizeOf<Vertex>(), IntPtr.Zero, BufferUsage.DynamicDraw);
             
             indexBufferHandle = GL.CreateBuffer();
-            GL.NamedBufferData(indexBufferHandle, InitialIndexBufferCapacity * sizeof(int), IntPtr.Zero, VertexBufferObjectUsage.DynamicDraw);
+            GL.NamedBufferData(indexBufferHandle, InitialIndexBufferCapacity * sizeof(int), IntPtr.Zero, BufferUsage.DynamicDraw);
             
             GL.VertexArrayVertexBuffer(vertexArrayHandle, 0, vertexBufferHandle, IntPtr.Zero, Unsafe.SizeOf<Vertex>());
             GL.VertexArrayElementBuffer(vertexArrayHandle, indexBufferHandle);
@@ -224,7 +224,7 @@ internal class Renderer : IRenderer, IDisposable
             GL.EnableVertexArrayAttrib(vertexArrayHandle, 1);
             
             glyphStorageBufferHandle = GL.CreateBuffer();
-            GL.NamedBufferData(glyphStorageBufferHandle, InitialGlyphBufferCapacity * Unsafe.SizeOf<GpuRenderGlyph>(), IntPtr.Zero, VertexBufferObjectUsage.DynamicDraw);
+            GL.NamedBufferData(glyphStorageBufferHandle, InitialGlyphBufferCapacity * Unsafe.SizeOf<GpuRenderGlyph>(), IntPtr.Zero, BufferUsage.DynamicDraw);
 
             multiDrawIndirectBufferHandle = GL.CreateBuffer();
             multiDrawItemsBufferHandle = GL.CreateBuffer();
@@ -232,9 +232,9 @@ internal class Renderer : IRenderer, IDisposable
             multiDrawTextItemsBufferHandle = GL.CreateBuffer();
 
             // The shaders read textures one of two ways, told with a define
-            bindlessTextures = SupportsExtension("GL_ARB_bindless_texture") &&
+            bindlessTexturesSupported = SupportsExtension("GL_ARB_bindless_texture") &&
                                Environment.GetEnvironmentVariable("RALSEI_NO_BINDLESS") is null;
-            if (bindlessTextures)
+            if (bindlessTexturesSupported)
             {
                 logger.LogInformation("Textures are bindless");
                 programHandle = LoaderUtil.LoadShaderProgram(loader, "Uber.vert", "Uber.frag",
@@ -274,10 +274,10 @@ internal class Renderer : IRenderer, IDisposable
             GL.NamedFramebufferRenderbuffer(fboHandle, FramebufferAttachment.ColorAttachment0, RenderbufferTarget.Renderbuffer, fboColorBufferHandle);
             GL.NamedFramebufferRenderbuffer(fboHandle, FramebufferAttachment.DepthAttachment, RenderbufferTarget.Renderbuffer, fboDepthBufferHandle);
 
-            postProcessTextureHandle1 = GL.CreateTexture(TextureTarget.Texture2d);
+            postProcessTextureHandle1 = GL.CreateTexture(TextureTarget.Texture2D);
             GL.TextureStorage2D(postProcessTextureHandle1, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
 
-            postProcessTextureHandle2 = GL.CreateTexture(TextureTarget.Texture2d);
+            postProcessTextureHandle2 = GL.CreateTexture(TextureTarget.Texture2D);
             GL.TextureStorage2D(postProcessTextureHandle2, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
 
             postProcessFboHandle = GL.CreateFramebuffer();
@@ -442,7 +442,7 @@ internal class Renderer : IRenderer, IDisposable
         {
             if (compositeTextureHandle == 0)
             {
-                compositeTextureHandle = GL.CreateTexture(TextureTarget.Texture2d);
+                compositeTextureHandle = GL.CreateTexture(TextureTarget.Texture2D);
                 GL.TextureStorage2D(compositeTextureHandle, 1, SizedInternalFormat.Rgba16f, currentFboSize.X, currentFboSize.Y);
             }
 
@@ -488,7 +488,7 @@ internal class Renderer : IRenderer, IDisposable
         passTextures.EnsureCount(passIndex + 1);
         if (passTextures[passIndex] is not { } info)
         {
-            var handle = GL.CreateTexture(TextureTarget.Texture2d);
+            var handle = GL.CreateTexture(TextureTarget.Texture2D);
             GL.TextureStorage2D(handle, 1, SizedInternalFormat.Rgba16f, currentFboSize.X, currentFboSize.Y);
             GL.TextureParameteri(handle, TextureParameterName.TextureMinFilter, (int) All.Linear);
             GL.TextureParameteri(handle, TextureParameterName.TextureMagFilter, (int) All.Linear);
@@ -496,7 +496,7 @@ internal class Renderer : IRenderer, IDisposable
             GL.TextureParameteri(handle, TextureParameterName.TextureWrapT, (int) All.ClampToEdge);
 
             var bindlessHandle = 0UL;
-            if (bindlessTextures)
+            if (bindlessTexturesSupported)
             {
                 bindlessHandle = GL.ARB.GetTextureHandleARB(handle);
                 GL.ARB.MakeTextureHandleResidentARB(bindlessHandle);
@@ -531,7 +531,7 @@ internal class Renderer : IRenderer, IDisposable
             presentFramebufferHandle = GL.GenFramebuffer();
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, presentFramebufferHandle);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, texture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, texture, 0);
 
         var framebufferSize = surface.FramebufferSize;
         var offset = (framebufferSize - size) / 2;
@@ -746,10 +746,10 @@ internal class Renderer : IRenderer, IDisposable
             return;
 
         DeleteViewportTextures();
-        viewportTextureHandle1 = GL.CreateTexture(TextureTarget.Texture2d);
+        viewportTextureHandle1 = GL.CreateTexture(TextureTarget.Texture2D);
         GL.TextureStorage2D(viewportTextureHandle1, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
 
-        viewportTextureHandle2 = GL.CreateTexture(TextureTarget.Texture2d);
+        viewportTextureHandle2 = GL.CreateTexture(TextureTarget.Texture2D);
         GL.TextureStorage2D(viewportTextureHandle2, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
         viewportTextureSize = size;
     }
@@ -777,16 +777,16 @@ internal class Renderer : IRenderer, IDisposable
         var textInfosSpan = CollectionsMarshal.AsSpan(textInfos);
 
         // Draws that can be drawn with the same bound textures make a page, a multi-draw of its own. Bindless needs no binding: one page.
-        if (!bindlessTextures)
+        if (!bindlessTexturesSupported)
             texturePager.Plan(drawData, drawCommands, texturePageSize);
 
         pageDraws.Clear();
         var currentMeshDrawId = 0;
         var currentTextDrawId = 0;
-        var pageCount = bindlessTextures ? 1 : texturePager.Pages.Count;
+        var pageCount = bindlessTexturesSupported ? 1 : texturePager.Pages.Count;
         for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
         {
-            var page = bindlessTextures ? new TexturePage(0, drawCommands.Length, 0, 0) : texturePager.Pages[pageIndex];
+            var page = bindlessTexturesSupported ? new TexturePage(0, drawCommands.Length, 0, 0) : texturePager.Pages[pageIndex];
             var pageEnd = page.FirstCommand + page.CommandCount;
             var firstIndirectCommand = multiDrawIndirectBuffer.Length;
 
@@ -807,7 +807,7 @@ internal class Renderer : IRenderer, IDisposable
                         ref var meshInfo = ref meshInfosSpan[meshDrawItem.MeshHandle.Id];
 
                         var mvp = meshDrawItem.Transform * camera;
-                        var texture = TextureFieldsOf(meshDrawItem.RenderMode == RenderMode.Normal ? meshDrawItem.Texture : TextureHandle.None, bindlessTextures ? -1 : texturePager.SlotOf(i));
+                        var texture = TextureFieldsOf(meshDrawItem.RenderMode == RenderMode.Normal ? meshDrawItem.Texture : TextureHandle.None, bindlessTexturesSupported ? -1 : texturePager.SlotOf(i));
 
                         multiDrawMeshItemsBuffer.Append(new GpuMeshDrawItem
                         {
@@ -909,7 +909,7 @@ internal class Renderer : IRenderer, IDisposable
             if (multiDrawIndirectBufferData.Length > multiDrawIndirectBufferSize)
             {
                 multiDrawIndirectBufferSize = multiDrawIndirectBufferData.Length;
-                GL.NamedBufferData(multiDrawIndirectBufferHandle, multiDrawIndirectBufferData.Length, multiDrawIndirectBufferData, VertexBufferObjectUsage.DynamicDraw);
+                GL.NamedBufferData(multiDrawIndirectBufferHandle, multiDrawIndirectBufferData.Length, multiDrawIndirectBufferData, BufferUsage.DynamicDraw);
             }
             else
                 GL.NamedBufferSubData(multiDrawIndirectBufferHandle, IntPtr.Zero, multiDrawIndirectBufferData.Length, multiDrawIndirectBufferData);
@@ -920,7 +920,7 @@ internal class Renderer : IRenderer, IDisposable
             if (multiDrawItemsBufferData.Length > multiDrawItemsBufferSize)
             {
                 multiDrawItemsBufferSize = multiDrawItemsBufferData.Length;
-                GL.NamedBufferData(multiDrawItemsBufferHandle, multiDrawItemsBufferData.Length, multiDrawItemsBufferData, VertexBufferObjectUsage.DynamicDraw);
+                GL.NamedBufferData(multiDrawItemsBufferHandle, multiDrawItemsBufferData.Length, multiDrawItemsBufferData, BufferUsage.DynamicDraw);
             }
             else
                 GL.NamedBufferSubData(multiDrawItemsBufferHandle, IntPtr.Zero, multiDrawItemsBufferData.Length, multiDrawItemsBufferData);
@@ -931,7 +931,7 @@ internal class Renderer : IRenderer, IDisposable
             if (multiDrawMeshItemsBufferData.Length > multiDrawMeshItemsBufferSize)
             {
                 multiDrawMeshItemsBufferSize = multiDrawMeshItemsBufferData.Length;
-                GL.NamedBufferData(multiDrawMeshItemsBufferHandle, multiDrawMeshItemsBufferData.Length, multiDrawMeshItemsBufferData, VertexBufferObjectUsage.DynamicDraw);
+                GL.NamedBufferData(multiDrawMeshItemsBufferHandle, multiDrawMeshItemsBufferData.Length, multiDrawMeshItemsBufferData, BufferUsage.DynamicDraw);
             }
             else
                 GL.NamedBufferSubData(multiDrawMeshItemsBufferHandle, IntPtr.Zero, multiDrawMeshItemsBufferData.Length, multiDrawMeshItemsBufferData);
@@ -942,7 +942,7 @@ internal class Renderer : IRenderer, IDisposable
             if (multiDrawTextItemsBufferData.Length > multiDrawTextItemsBufferSize)
             {
                 multiDrawTextItemsBufferSize = multiDrawTextItemsBufferData.Length;
-                GL.NamedBufferData(multiDrawTextItemsBufferHandle, multiDrawTextItemsBufferData.Length, multiDrawTextItemsBufferData, VertexBufferObjectUsage.DynamicDraw);
+                GL.NamedBufferData(multiDrawTextItemsBufferHandle, multiDrawTextItemsBufferData.Length, multiDrawTextItemsBufferData, BufferUsage.DynamicDraw);
             }
             else
                 GL.NamedBufferSubData(multiDrawTextItemsBufferHandle, IntPtr.Zero, multiDrawTextItemsBufferData.Length, multiDrawTextItemsBufferData);
@@ -951,7 +951,7 @@ internal class Renderer : IRenderer, IDisposable
         // Draw, a page at a time
         foreach (var (pageIndex, firstCommand, commandCount) in pageDraws)
         {
-            if (!bindlessTextures)
+            if (!bindlessTexturesSupported)
             {
                 var textures = texturePager.TexturesOf(texturePager.Pages[pageIndex]);
                 for (var slot = 0; slot < textures.Length; slot++)
@@ -1056,7 +1056,7 @@ internal class Renderer : IRenderer, IDisposable
                     var vtxAlloc = vertexBufferAllocator.Allocate(vertices.Length, (oldCapacity, newCapacity) =>
                     {
                         var newBufferHandle = GL.CreateBuffer();
-                        GL.NamedBufferData(newBufferHandle, newCapacity * Unsafe.SizeOf<Vertex>(), IntPtr.Zero, VertexBufferObjectUsage.DynamicDraw);
+                        GL.NamedBufferData(newBufferHandle, newCapacity * Unsafe.SizeOf<Vertex>(), IntPtr.Zero, BufferUsage.DynamicDraw);
                         GL.CopyNamedBufferSubData(vertexBufferHandle, newBufferHandle, IntPtr.Zero, IntPtr.Zero, oldCapacity * Unsafe.SizeOf<Vertex>());
                         GL.DeleteBuffer(vertexBufferHandle);
                         vertexBufferHandle = newBufferHandle;
@@ -1069,7 +1069,7 @@ internal class Renderer : IRenderer, IDisposable
                     var idxAlloc = indexBufferAllocator.Allocate(indices.Length, (oldCapacity, newCapacity) =>
                     {
                         var newBufferHandle = GL.CreateBuffer();
-                        GL.NamedBufferData(newBufferHandle, newCapacity * sizeof(int), IntPtr.Zero, VertexBufferObjectUsage.DynamicDraw);
+                        GL.NamedBufferData(newBufferHandle, newCapacity * sizeof(int), IntPtr.Zero, BufferUsage.DynamicDraw);
                         GL.CopyNamedBufferSubData(indexBufferHandle, newBufferHandle, IntPtr.Zero, IntPtr.Zero, oldCapacity * sizeof(int));
                         GL.DeleteBuffer(indexBufferHandle);
                         indexBufferHandle = newBufferHandle;
@@ -1115,7 +1115,7 @@ internal class Renderer : IRenderer, IDisposable
                     Debug.Assert(command.Data.HasValue);
                     var (width, height, pixelData, sampling) = command.Data.Value;
 
-                    var textureHandle = GL.CreateTexture(TextureTarget.Texture2d);
+                    var textureHandle = GL.CreateTexture(TextureTarget.Texture2D);
                     GL.TextureStorage2D(textureHandle, 1, SizedInternalFormat.Rgba8, width, height);
                     GL.TextureSubImage2D(textureHandle, 0, 0, 0, width, height, PixelFormat.Rgba, PixelType.UnsignedByte, pixelData);
 
@@ -1128,7 +1128,7 @@ internal class Renderer : IRenderer, IDisposable
                     GL.TextureParameterf(textureHandle, TextureParameterName.TextureBorderColor, in border.R);
 
                     var bindlessHandle = 0UL;
-                    if (bindlessTextures)
+                    if (bindlessTexturesSupported)
                     {
                         bindlessHandle = GL.ARB.GetTextureHandleARB(textureHandle);
                         GL.ARB.MakeTextureHandleResidentARB(bindlessHandle);
@@ -1188,10 +1188,10 @@ internal class Renderer : IRenderer, IDisposable
     private TextureFields TextureFieldsOf(TextureHandle texture, int slot)
     {
         if (texture.IsNone || FindTexture(texture.Id) is not { } info)
-            return new TextureFields(bindlessTextures ? 0 : -1, 0, 0);
+            return new TextureFields(bindlessTexturesSupported ? 0 : -1, 0, 0);
 
         var flags = info.CrispEdges ? 1 : 0;
-        return bindlessTextures
+        return bindlessTexturesSupported
             ? new TextureFields((int) (uint) info.BindlessHandle, (int) (uint) (info.BindlessHandle >> 32), flags)
             : new TextureFields(slot, 0, flags);
     }
@@ -1244,10 +1244,10 @@ internal class Renderer : IRenderer, IDisposable
             Color = x.Color
         }).ToArray();
         
-        GL.NamedBufferData(curveSsboHandle, curves.Length * Unsafe.SizeOf<QuadraticCurve>(), curves, VertexBufferObjectUsage.DynamicDraw);
-        GL.NamedBufferData(curveIndexSsboHandle, curveIndices.Length * sizeof(int), curveIndices, VertexBufferObjectUsage.DynamicDraw);
-        GL.NamedBufferData(bandEntrySsboHandle, bandEntries.Length * Unsafe.SizeOf<BandEntry>(), bandEntries, VertexBufferObjectUsage.DynamicDraw);
-        GL.NamedBufferData(shapeEntrySsboHandle, gpuShapeEntries.Length * Unsafe.SizeOf<GpuShapeEntry>(), gpuShapeEntries, VertexBufferObjectUsage.DynamicDraw);
+        GL.NamedBufferData(curveSsboHandle, curves.Length * Unsafe.SizeOf<QuadraticCurve>(), curves, BufferUsage.DynamicDraw);
+        GL.NamedBufferData(curveIndexSsboHandle, curveIndices.Length * sizeof(int), curveIndices, BufferUsage.DynamicDraw);
+        GL.NamedBufferData(bandEntrySsboHandle, bandEntries.Length * Unsafe.SizeOf<BandEntry>(), bandEntries, BufferUsage.DynamicDraw);
+        GL.NamedBufferData(shapeEntrySsboHandle, gpuShapeEntries.Length * Unsafe.SizeOf<GpuShapeEntry>(), gpuShapeEntries, BufferUsage.DynamicDraw);
         
         logger.LogInformation(
             "Font buffers updated, registered {Curves} curves, {CurveIndices} curve indices, {Bands} band entries, {Shapes} shape entries",
@@ -1278,7 +1278,7 @@ internal class Renderer : IRenderer, IDisposable
                     var glyphAlloc = glyphBufferAllocator.Allocate(renderGlyphs.Length, (oldCapacity, newCapacity) =>
                     {
                         var newBufferHandle = GL.CreateBuffer();
-                        GL.NamedBufferData(newBufferHandle, newCapacity * Unsafe.SizeOf<GpuRenderGlyph>(), IntPtr.Zero, VertexBufferObjectUsage.DynamicDraw);
+                        GL.NamedBufferData(newBufferHandle, newCapacity * Unsafe.SizeOf<GpuRenderGlyph>(), IntPtr.Zero, BufferUsage.DynamicDraw);
                         GL.CopyNamedBufferSubData(glyphStorageBufferHandle, newBufferHandle, IntPtr.Zero, IntPtr.Zero, oldCapacity * Unsafe.SizeOf<GpuRenderGlyph>());
                         GL.DeleteBuffer(glyphStorageBufferHandle);
                         glyphStorageBufferHandle = newBufferHandle;
@@ -1332,10 +1332,10 @@ internal class Renderer : IRenderer, IDisposable
         fboDepthBufferHandle = GL.CreateRenderbuffer();
         GL.NamedRenderbufferStorageMultisample(fboDepthBufferHandle, MsaaSamples, InternalFormat.DepthComponent32f, size.X, size.Y);
         
-        postProcessTextureHandle1 = GL.CreateTexture(TextureTarget.Texture2d);
+        postProcessTextureHandle1 = GL.CreateTexture(TextureTarget.Texture2D);
         GL.TextureStorage2D(postProcessTextureHandle1, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
         
-        postProcessTextureHandle2 = GL.CreateTexture(TextureTarget.Texture2d);
+        postProcessTextureHandle2 = GL.CreateTexture(TextureTarget.Texture2D);
         GL.TextureStorage2D(postProcessTextureHandle2, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
         
         GL.NamedFramebufferRenderbuffer(fboHandle, FramebufferAttachment.ColorAttachment0, RenderbufferTarget.Renderbuffer, fboColorBufferHandle);

@@ -241,12 +241,12 @@ internal class Renderer : IRenderer, IDisposable
             GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment, RenderbufferTarget.Renderbuffer, fboDepthBufferHandle);
 
             postProcessTextureHandle1 = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, postProcessTextureHandle1);
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, initialSize.X, initialSize.Y);
+            GL.BindTexture(TextureTarget.Texture2D, postProcessTextureHandle1);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, initialSize.X, initialSize.Y);
 
             postProcessTextureHandle2 = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, postProcessTextureHandle2);
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, initialSize.X, initialSize.Y);
+            GL.BindTexture(TextureTarget.Texture2D, postProcessTextureHandle2);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, initialSize.X, initialSize.Y);
 
             postProcessFboHandle = GL.GenFramebuffer();
             
@@ -417,8 +417,8 @@ internal class Renderer : IRenderer, IDisposable
             if (compositeTextureHandle == 0)
             {
                 compositeTextureHandle = GL.GenTexture();
-                GL.BindTexture(TextureTarget.Texture2d, compositeTextureHandle);
-                GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, currentFboSize.X, currentFboSize.Y);
+                GL.BindTexture(TextureTarget.Texture2D, compositeTextureHandle);
+                GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, currentFboSize.X, currentFboSize.Y);
             }
 
             blend.Clear(currentFboSize, compositeTextureHandle);
@@ -464,12 +464,12 @@ internal class Renderer : IRenderer, IDisposable
         if (passTextures[passIndex] is not { } info)
         {
             var handle = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, handle);
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, currentFboSize.X, currentFboSize.Y);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, (int) All.Linear);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, (int) All.Linear);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureWrapS, (int) All.ClampToEdge);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureWrapT, (int) All.ClampToEdge);
+            GL.BindTexture(TextureTarget.Texture2D, handle);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, currentFboSize.X, currentFboSize.Y);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int) All.Linear);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int) All.Linear);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int) All.ClampToEdge);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int) All.ClampToEdge);
 
             passTextures[passIndex] = info = new TextureInfo { Handle = handle };
         }
@@ -481,9 +481,9 @@ internal class Renderer : IRenderer, IDisposable
         }
 
         GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, passCopyReadFramebufferHandle);
-        GL.FramebufferTexture2D(FramebufferTarget.ReadFramebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, sourceTexture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.ReadFramebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, sourceTexture, 0);
         GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, passCopyDrawFramebufferHandle);
-        GL.FramebufferTexture2D(FramebufferTarget.DrawFramebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, info.Handle, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.DrawFramebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, info.Handle, 0);
 
         // (A clip of the pass would cut the copy)
         GL.Disable(EnableCap.ScissorTest);
@@ -501,7 +501,7 @@ internal class Renderer : IRenderer, IDisposable
             presentFramebufferHandle = GL.GenFramebuffer();
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, presentFramebufferHandle);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, texture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, texture, 0);
 
         var framebufferSize = surface.FramebufferSize;
         var offset = (framebufferSize - size) / 2;
@@ -578,16 +578,16 @@ internal class Renderer : IRenderer, IDisposable
         GL.BindSampler(3, 0);
 
         GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2d, fontCurvesTextureHandle);
+        GL.BindTexture(TextureTarget.Texture2D, fontCurvesTextureHandle);
 
         GL.ActiveTexture(TextureUnit.Texture1);
-        GL.BindTexture(TextureTarget.Texture2d, fontCurveIndicesTextureHandle);
+        GL.BindTexture(TextureTarget.Texture2D, fontCurveIndicesTextureHandle);
 
         GL.ActiveTexture(TextureUnit.Texture2);
-        GL.BindTexture(TextureTarget.Texture2d, fontBandEntriesTextureHandle);
+        GL.BindTexture(TextureTarget.Texture2D, fontBandEntriesTextureHandle);
 
         GL.ActiveTexture(TextureUnit.Texture3);
-        GL.BindTexture(TextureTarget.Texture2d, fontShapeEntriesTextureHandle);
+        GL.BindTexture(TextureTarget.Texture2D, fontShapeEntriesTextureHandle);
 
         // Clear the screen. The target holds premultiplied colors, and so does what it is cleared to
         var clearColor = drawData.ClearColor;
@@ -644,7 +644,7 @@ internal class Renderer : IRenderer, IDisposable
         GL.DepthMask(true);
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, postProcessFboHandle);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, postProcessTextureHandle1, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, postProcessTextureHandle1, 0);
 
         GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, fboHandle);
         GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, postProcessFboHandle);
@@ -688,9 +688,9 @@ internal class Renderer : IRenderer, IDisposable
             viewportFboHandle = GL.GenFramebuffer();
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, viewportFboHandle);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, viewportTextureHandle1, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, viewportTextureHandle1, 0);
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, postProcessFboHandle);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, postProcessTextureHandle1, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, postProcessTextureHandle1, 0);
 
         GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, postProcessFboHandle);
         GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, viewportFboHandle);
@@ -699,9 +699,9 @@ internal class Renderer : IRenderer, IDisposable
         var result = HandlePostProcessing(state, viewportTextureHandle1, viewportTextureHandle2, layered, size);
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, viewportFboHandle);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, result, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, result, 0);
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, postProcessFboHandle);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, postProcessTextureHandle1, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, postProcessTextureHandle1, 0);
 
         GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, viewportFboHandle);
         GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, postProcessFboHandle);
@@ -716,12 +716,12 @@ internal class Renderer : IRenderer, IDisposable
 
         DeleteViewportTextures();
         viewportTextureHandle1 = GL.GenTexture();
-        GL.BindTexture(TextureTarget.Texture2d, viewportTextureHandle1);
-        GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
+        GL.BindTexture(TextureTarget.Texture2D, viewportTextureHandle1);
+        GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
 
         viewportTextureHandle2 = GL.GenTexture();
-        GL.BindTexture(TextureTarget.Texture2d, viewportTextureHandle2);
-        GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
+        GL.BindTexture(TextureTarget.Texture2D, viewportTextureHandle2);
+        GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
         viewportTextureSize = size;
     }
 
@@ -899,7 +899,7 @@ internal class Renderer : IRenderer, IDisposable
         {
             GL.ActiveTexture((TextureUnit) ((int) TextureUnit.Texture0 + FirstTextureSlotUnit + slot));
             var info = FindTexture(textures[slot]);
-            GL.BindTexture(TextureTarget.Texture2d, info?.Handle ?? 0);
+            GL.BindTexture(TextureTarget.Texture2D, info?.Handle ?? 0);
         }
     }
 
@@ -1209,18 +1209,18 @@ internal class Renderer : IRenderer, IDisposable
                     var (width, height, pixelData, sampling) = command.Data.Value;
 
                     var textureHandle = GL.GenTexture();
-                    GL.BindTexture(TextureTarget.Texture2d, textureHandle);
-                    GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba8, width, height);
-                    GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, width, height, PixelFormat.Rgba, PixelType.UnsignedByte, pixelData);
+                    GL.BindTexture(TextureTarget.Texture2D, textureHandle);
+                    GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba8, width, height);
+                    GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, width, height, PixelFormat.Rgba, PixelType.UnsignedByte, pixelData);
 
-                    GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, GetFilter(sampling.MinificationFilter));
-                    GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, GetFilter(sampling.MagnificationFilter));
-                    GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureWrapS, GetWrapMode(sampling.WrapModeU));
-                    GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureWrapT, GetWrapMode(sampling.WrapModeV));
+                    GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, GetFilter(sampling.MinificationFilter));
+                    GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, GetFilter(sampling.MagnificationFilter));
+                    GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, GetWrapMode(sampling.WrapModeU));
+                    GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, GetWrapMode(sampling.WrapModeV));
                     if (sampling.WrapModeU == TextureAddressMode.ClampToBorder || sampling.WrapModeV == TextureAddressMode.ClampToBorder)
                     {
                         var border = sampling.BorderColor;
-                        GL.TexParameterf(TextureTarget.Texture2d, TextureParameterName.TextureBorderColor, in border.R);
+                        GL.TexParameterf(TextureTarget.Texture2D, TextureParameterName.TextureBorderColor, in border.R);
                     }
 
                     textureInfos.EnsureCount(command.Id + 1);
@@ -1281,21 +1281,21 @@ internal class Renderer : IRenderer, IDisposable
         if (resources.FontCurves.Length > 0)
         {
             fontCurvesTextureHandle = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, fontCurvesTextureHandle);
+            GL.BindTexture(TextureTarget.Texture2D, fontCurvesTextureHandle);
             
             // each curve takes exactly 3 texels
             var texWidth = FontTextureWidth;
             var texHeight = (resources.FontCurves.Length * 3 + FontTextureWidth - 1) / FontTextureWidth; // Round up division
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rg32f, texWidth, texHeight);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rg32f, texWidth, texHeight);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
 
             var bufSize = texWidth * texHeight * 2 * sizeof(float);
             var buf = new byte[bufSize];
             var fontCurvesSpan = MemoryMarshal.AsBytes(resources.FontCurves);
             fontCurvesSpan.CopyTo(buf);
             
-            GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, texWidth, texHeight, PixelFormat.Rg, PixelType.Float, buf); 
+            GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, texWidth, texHeight, PixelFormat.Rg, PixelType.Float, buf); 
         }
         
         if (fontCurveIndicesTextureHandle != 0)
@@ -1307,21 +1307,21 @@ internal class Renderer : IRenderer, IDisposable
         if (resources.FontCurveIndices.Length > 0)
         {
             fontCurveIndicesTextureHandle = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, fontCurveIndicesTextureHandle);
+            GL.BindTexture(TextureTarget.Texture2D, fontCurveIndicesTextureHandle);
 
             // each curve index takes exactly 1 texel
             var texWidth = FontTextureWidth;
             var texHeight = (resources.FontCurveIndices.Length + FontTextureWidth - 1) / FontTextureWidth; // Round up division
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.R32i, texWidth, texHeight);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.R32i, texWidth, texHeight);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
             
             var bufSize = texWidth * texHeight * sizeof(int);
             var buf = new byte[bufSize];
             var fontCurveIndicesSpan = MemoryMarshal.AsBytes(resources.FontCurveIndices);
             fontCurveIndicesSpan.CopyTo(buf);
             
-            GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, texWidth, texHeight, PixelFormat.RedInteger, PixelType.Int, buf);
+            GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, texWidth, texHeight, PixelFormat.RedInteger, PixelType.Int, buf);
         }
         
         if (fontBandEntriesTextureHandle != 0)
@@ -1333,21 +1333,21 @@ internal class Renderer : IRenderer, IDisposable
         if (resources.FontBandEntries.Length > 0)
         {
             fontBandEntriesTextureHandle = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, fontBandEntriesTextureHandle);
+            GL.BindTexture(TextureTarget.Texture2D, fontBandEntriesTextureHandle);
             
             // each band entry takes exactly 1 texel
             var texWidth = FontTextureWidth;
             var texHeight = (resources.FontBandEntries.Length + FontTextureWidth - 1) / FontTextureWidth; // Round up division
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rg32i, texWidth, texHeight);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rg32i, texWidth, texHeight);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
             
             var bufSize = texWidth * texHeight * 2 * sizeof(int);
             var buf = new byte[bufSize];
             var fontBandEntriesSpan = MemoryMarshal.AsBytes(resources.FontBandEntries);
             fontBandEntriesSpan.CopyTo(buf);
             
-            GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, texWidth, texHeight, PixelFormat.RgInteger, PixelType.Int, buf);
+            GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, texWidth, texHeight, PixelFormat.RgInteger, PixelType.Int, buf);
         }
         
         if (fontShapeEntriesTextureHandle != 0)
@@ -1359,14 +1359,14 @@ internal class Renderer : IRenderer, IDisposable
         if (resources.FontShapeEntries.Length > 0)
         {
             fontShapeEntriesTextureHandle = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, fontShapeEntriesTextureHandle);
+            GL.BindTexture(TextureTarget.Texture2D, fontShapeEntriesTextureHandle);
 
             // each shape entry takes exactly 4 texel
             var texWidth = FontTextureWidth;
             var texHeight = (resources.FontShapeEntries.Length * 4 + FontTextureWidth - 1) / FontTextureWidth; // Round up division
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba32ui, texWidth, texHeight);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
-            GL.TexParameteri(TextureTarget.Texture2d, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba32ui, texWidth, texHeight);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameteri(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
             
             var gpuShapeEntries = resources.FontShapeEntries.Select(x => new GpuShapeEntry
             {
@@ -1388,7 +1388,7 @@ internal class Renderer : IRenderer, IDisposable
             var fontShapeEntriesSpan = MemoryMarshal.AsBytes(gpuShapeEntries);
             fontShapeEntriesSpan.CopyTo(buf);
             
-            GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, texWidth, texHeight, PixelFormat.RgbaInteger, PixelType.UnsignedInt, buf);
+            GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, texWidth, texHeight, PixelFormat.RgbaInteger, PixelType.UnsignedInt, buf);
         }
 
         logger.LogInformation(
@@ -1459,12 +1459,12 @@ internal class Renderer : IRenderer, IDisposable
         DeletePassTextures();
         
         postProcessTextureHandle1 = GL.GenTexture();
-        GL.BindTexture(TextureTarget.Texture2d, postProcessTextureHandle1);
-        GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
+        GL.BindTexture(TextureTarget.Texture2D, postProcessTextureHandle1);
+        GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
         
         postProcessTextureHandle2 = GL.GenTexture();
-        GL.BindTexture(TextureTarget.Texture2d, postProcessTextureHandle2);
-        GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
+        GL.BindTexture(TextureTarget.Texture2D, postProcessTextureHandle2);
+        GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, size.X, size.Y);
         
         currentFboSize = size;
         

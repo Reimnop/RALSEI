@@ -41,7 +41,7 @@ internal class DepthOfField : IDisposable
             return false;
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, outputTexture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, outputTexture, 0);
         GL.Viewport(0, 0, size.X, size.Y);
 
         GL.UseProgram(program);
@@ -50,7 +50,7 @@ internal class DepthOfField : IDisposable
 
         // The blur reads between the pixels. The passes after it do not, so the sampler is taken off again
         GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2d, inputTexture);
+        GL.BindTexture(TextureTarget.Texture2D, inputTexture);
         GL.BindSampler(0, textureSampler);
 
         GL.BindVertexArray(vaoHandle);

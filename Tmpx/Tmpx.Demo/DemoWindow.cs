@@ -49,16 +49,16 @@ public class DemoWindow() : GameWindow(GameWindowSettings, NativeWindowSettings)
         }).ToArray();
         
         shapeEntryBuffer = GL.CreateBuffer();
-        GL.NamedBufferData(shapeEntryBuffer, gpuShapeEntries.Length * Unsafe.SizeOf<GpuShapeEntry>(), gpuShapeEntries, VertexBufferObjectUsage.StaticDraw);
+        GL.NamedBufferData(shapeEntryBuffer, gpuShapeEntries.Length * Unsafe.SizeOf<GpuShapeEntry>(), gpuShapeEntries, BufferUsage.StaticDraw);
         
         curveBuffer = GL.CreateBuffer();
-        GL.NamedBufferData(curveBuffer, font.Curves.Length * Unsafe.SizeOf<QuadraticCurve>(), font.Curves, VertexBufferObjectUsage.StaticDraw);
+        GL.NamedBufferData(curveBuffer, font.Curves.Length * Unsafe.SizeOf<QuadraticCurve>(), font.Curves, BufferUsage.StaticDraw);
         
         curveIndexBuffer = GL.CreateBuffer();
-        GL.NamedBufferData(curveIndexBuffer, font.CurveIndices.Length * Unsafe.SizeOf<int>(), font.CurveIndices, VertexBufferObjectUsage.StaticDraw);
+        GL.NamedBufferData(curveIndexBuffer, font.CurveIndices.Length * Unsafe.SizeOf<int>(), font.CurveIndices, BufferUsage.StaticDraw);
         
         bandEntryBuffer = GL.CreateBuffer();
-        GL.NamedBufferData(bandEntryBuffer, font.BandEntries.Length * Unsafe.SizeOf<BandEntry>(), font.BandEntries, VertexBufferObjectUsage.StaticDraw);
+        GL.NamedBufferData(bandEntryBuffer, font.BandEntries.Length * Unsafe.SizeOf<BandEntry>(), font.BandEntries, BufferUsage.StaticDraw);
 
         var fallbackChainRegistry = new FontFallbackChainRegistry("LiberationSans-Regular");
         fallbackChainRegistry.RegisterFallbackChain("LiberationSans-Regular", "LiberationSans-Regular");
@@ -87,7 +87,7 @@ public class DemoWindow() : GameWindow(GameWindowSettings, NativeWindowSettings)
         instanceCount = instanceData.Length;
         
         instanceBuffer = GL.CreateBuffer();
-        GL.NamedBufferData(instanceBuffer, instanceData.Length * Unsafe.SizeOf<InstanceItem>(), instanceData, VertexBufferObjectUsage.DynamicDraw);
+        GL.NamedBufferData(instanceBuffer, instanceData.Length * Unsafe.SizeOf<InstanceItem>(), instanceData, BufferUsage.DynamicDraw);
         
         vao = GL.CreateVertexArray();
         

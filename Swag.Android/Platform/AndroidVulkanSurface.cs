@@ -32,7 +32,7 @@ public sealed unsafe class AndroidVulkanSurface : IVulkanSurface, IDisposable
     public IReadOnlyList<string> GetRequiredInstanceExtensions()
         => [Vk.KhrSurfaceExtensionName, Vk.KhrAndroidSurfaceExtensionName];
 
-    public ulong CreateSurface(ulong instance)
+    public ulong CreateSurface(IntPtr instance)
     {
         var createInfo = new VkAndroidSurfaceCreateInfoKHR
         {

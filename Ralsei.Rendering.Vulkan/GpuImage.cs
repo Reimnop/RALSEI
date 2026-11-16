@@ -26,7 +26,7 @@ internal sealed unsafe class GpuImage : IDisposable
         var createInfo = new VkImageCreateInfo
         {
             sType = VkStructureType.StructureTypeImageCreateInfo,
-            imageType = VkImageType.ImageType2d,
+            imageType = VkImageType.ImageType2D,
             format = format,
             extent = new VkExtent3D { width = (uint) size.X, height = (uint) size.Y, depth = 1 },
             mipLevels = 1,
@@ -62,7 +62,7 @@ internal sealed unsafe class GpuImage : IDisposable
             {
                 sType = VkStructureType.StructureTypeImageViewCreateInfo,
                 image = Image,
-                viewType = VkImageViewType.ImageViewType2d,
+                viewType = VkImageViewType.ImageViewType2D,
                 format = format,
                 components = new VkComponentMapping
                 {

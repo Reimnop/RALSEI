@@ -162,7 +162,7 @@ internal sealed unsafe class VulkanContext : IDisposable
                 applicationVersion = 1,
                 pEngineName = appName,
                 engineVersion = 1,
-                apiVersion = Vk.VK_API_VERSION_1_3
+                apiVersion = Vk.API_VERSION_1_3()
             };
 
             var createInfo = new VkInstanceCreateInfo
@@ -354,7 +354,7 @@ internal sealed unsafe class VulkanContext : IDisposable
         queueFamily = 0;
         rejection = string.Empty;
 
-        if (properties.apiVersion < Vk.VK_API_VERSION_1_3)
+        if (properties.apiVersion < Vk.API_VERSION_1_3())
         {
             rejection = "does not support Vulkan 1.3";
             return false;

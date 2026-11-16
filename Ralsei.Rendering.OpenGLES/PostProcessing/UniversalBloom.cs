@@ -88,7 +88,7 @@ internal class UniversalBloom : IDisposable
         GL.BindSampler(1, textureSampler);
         
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, mip0.Down, 0); // Bind output texture
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, mip0.Down, 0); // Bind output texture
         GL.Viewport(0, 0, mip0.Size.X, mip0.Size.Y);
         
         GL.UseProgram(prefilterProgram);
@@ -102,7 +102,7 @@ internal class UniversalBloom : IDisposable
         // We use active texture 0
         GL.ActiveTexture(TextureUnit.Texture0);
         
-        GL.BindTexture(TextureTarget.Texture2d, inputTexture);
+        GL.BindTexture(TextureTarget.Texture2D, inputTexture);
         
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         
@@ -115,20 +115,20 @@ internal class UniversalBloom : IDisposable
             
             GL.Uniform2i(blurOutputSizeUniformLocation, targetMip.Size.X, targetMip.Size.Y);
             
-            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetMip.Up, 0);
+            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, targetMip.Up, 0);
             GL.Viewport(0, 0, targetMip.Size.X, targetMip.Size.Y);
             
             GL.Uniform1i(blurIsVerticalUniformLocation, 0);
             
-            GL.BindTexture(TextureTarget.Texture2d, sourceMip.Down);
+            GL.BindTexture(TextureTarget.Texture2D, sourceMip.Down);
             
             GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
             
-            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetMip.Down, 0);
+            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, targetMip.Down, 0);
             
             GL.Uniform1i(blurIsVerticalUniformLocation, 1);
             
-            GL.BindTexture(TextureTarget.Texture2d, targetMip.Up);
+            GL.BindTexture(TextureTarget.Texture2D, targetMip.Up);
             
             GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         }
@@ -144,19 +144,19 @@ internal class UniversalBloom : IDisposable
             var highMip = mipChain[i].Down;
             var targetMip = mipChain[i]; // Up direction
             
-            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetMip.Up, 0);
+            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, targetMip.Up, 0);
             GL.Viewport(0, 0, targetMip.Size.X, targetMip.Size.Y);
             
             GL.ActiveTexture(TextureUnit.Texture0);
-            GL.BindTexture(TextureTarget.Texture2d, lowMip);
+            GL.BindTexture(TextureTarget.Texture2D, lowMip);
             
             GL.ActiveTexture(TextureUnit.Texture1);
-            GL.BindTexture(TextureTarget.Texture2d, highMip);
+            GL.BindTexture(TextureTarget.Texture2D, highMip);
             
             GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         }
         
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, outputTexture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, outputTexture, 0);
         GL.Viewport(0, 0, size.X, size.Y);
         
         GL.UseProgram(combineProgram);
@@ -168,10 +168,10 @@ internal class UniversalBloom : IDisposable
         GL.Uniform3f(combineTintUniformLocation, tint.R, tint.G, tint.B);
         
         GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2d, inputTexture);
+        GL.BindTexture(TextureTarget.Texture2D, inputTexture);
         
         GL.ActiveTexture(TextureUnit.Texture1);
-        GL.BindTexture(TextureTarget.Texture2d, mip0.Up);
+        GL.BindTexture(TextureTarget.Texture2D, mip0.Up);
         
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         
@@ -195,12 +195,12 @@ internal class UniversalBloom : IDisposable
                 Math.Max(size.Y >> i, 1));
             
             var down = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, down);
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, mipSize.X, mipSize.Y);
+            GL.BindTexture(TextureTarget.Texture2D, down);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, mipSize.X, mipSize.Y);
             
             var up = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, up);
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, mipSize.X, mipSize.Y);
+            GL.BindTexture(TextureTarget.Texture2D, up);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, mipSize.X, mipSize.Y);
             
             mipChain.Add(new Mip(down, up, mipSize));
             

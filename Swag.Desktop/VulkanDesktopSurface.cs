@@ -18,10 +18,10 @@ public sealed unsafe class VulkanDesktopSurface(DesktopSurfaceSettings surfaceSe
         return GLFW.GetRequiredInstanceExtensions();
     }
 
-    public ulong CreateSurface(ulong instance)
+    public ulong CreateSurface(IntPtr instance)
     {
         VkHandle surface;
-        var result = GLFW.CreateWindowSurface(new VkHandle { Handle = instance }, WindowPtr, null, out surface);
+        var result = GLFW.CreateWindowSurface(new VkHandle { Handle = (ulong)instance }, WindowPtr, null, out surface);
         if (result != 0)
             throw new InvalidOperationException($"Failed to create a Vulkan surface for the window (VkResult {result})");
 

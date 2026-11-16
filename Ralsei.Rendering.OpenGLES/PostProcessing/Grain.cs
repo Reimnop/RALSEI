@@ -58,16 +58,16 @@ internal class Grain : IDisposable
         GL.Uniform1i(noiseAddSourceSamplerUniformLocation, 0);
         
         noiseTextureA = GL.GenTexture();
-        GL.BindTexture(TextureTarget.Texture2d, noiseTextureA);
-        GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.R16f, NoiseTextureWidth, NoiseTextureHeight);
+        GL.BindTexture(TextureTarget.Texture2D, noiseTextureA);
+        GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.R16f, NoiseTextureWidth, NoiseTextureHeight);
         
         noiseTextureB = GL.GenTexture();
-        GL.BindTexture(TextureTarget.Texture2d, noiseTextureB);
-        GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.R16f, NoiseTextureWidth, NoiseTextureHeight);
+        GL.BindTexture(TextureTarget.Texture2D, noiseTextureB);
+        GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.R16f, NoiseTextureWidth, NoiseTextureHeight);
         
         noiseTextureCombined = GL.GenTexture();
-        GL.BindTexture(TextureTarget.Texture2d, noiseTextureCombined);
-        GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgb16f, NoiseTextureWidth, NoiseTextureHeight);
+        GL.BindTexture(TextureTarget.Texture2D, noiseTextureCombined);
+        GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgb16f, NoiseTextureWidth, NoiseTextureHeight);
         
         noiseSampler = GL.GenSampler();
         GL.SamplerParameteri(noiseSampler, SamplerParameterI.TextureMinFilter, (int)TextureMinFilter.Nearest);
@@ -127,16 +127,16 @@ internal class Grain : IDisposable
         
         GL.Viewport(0, 0, size.X, size.Y);
         
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, outputTexture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, outputTexture, 0);
         
         GL.BindSampler(0, linearSampler);
         GL.BindSampler(1, noiseSamplerLinearRepeat);
         
         GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2d, inputTexture);
+        GL.BindTexture(TextureTarget.Texture2D, inputTexture);
         
         GL.ActiveTexture(TextureUnit.Texture1);
-        GL.BindTexture(TextureTarget.Texture2d, noiseTexture);
+        GL.BindTexture(TextureTarget.Texture2D, noiseTexture);
         
         GL.UseProgram(compositeProgram);
         GL.Uniform1i(compositeColoredUniformLocation, colored ? 1 : 0);
@@ -164,7 +164,7 @@ internal class Grain : IDisposable
         if (!colored)
             return ComputeNoiseSingleChannel(phase);
         
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, noiseTextureCombined, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, noiseTextureCombined, 0);
         GL.ClearColor(0f, 0f, 0f, 1f);
         GL.Clear(ClearBufferMask.ColorBufferBit);
         
@@ -195,12 +195,12 @@ internal class Grain : IDisposable
     
     private void ComputeCombinedNoiseTexture(int texture, int target, int channel)
     {
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, target, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, target, 0);
         
         GL.UseProgram(noiseAddProgram);
         
         GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2d, texture);
+        GL.BindTexture(TextureTarget.Texture2D, texture);
 
         GL.Uniform1i(noiseAddChannelUniformLocation, channel);
         
@@ -209,27 +209,27 @@ internal class Grain : IDisposable
     
     private int ComputeNoiseSingleChannel(float phase)
     {
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, noiseTextureA, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, noiseTextureA, 0);
         
         GL.UseProgram(noiseProgram);
         GL.Uniform1f(noisePhaseUniformLocation, phase);
         
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, noiseTextureB, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, noiseTextureB, 0);
         
         GL.UseProgram(filterProgram);
         
         GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2d, noiseTextureA);
+        GL.BindTexture(TextureTarget.Texture2D, noiseTextureA);
         
         GL.Uniform2f(filterParamsUniformLocation, 2f, -12f);
         
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, noiseTextureA, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, noiseTextureA, 0);
         
-        GL.BindTexture(TextureTarget.Texture2d, noiseTextureB);
+        GL.BindTexture(TextureTarget.Texture2D, noiseTextureB);
         GL.Uniform2f(filterParamsUniformLocation, 2f, 4f);
         
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);

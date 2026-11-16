@@ -43,8 +43,8 @@ internal class Glitch : IDisposable
         GL.Uniform1i(noiseTextureUniformLocation, 1);
         
         noiseTexture = GL.GenTexture();
-        GL.BindTexture(TextureTarget.Texture2d, noiseTexture);
-        GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgb8, NoiseTextureWidth, NoiseTextureHeight);
+        GL.BindTexture(TextureTarget.Texture2D, noiseTexture);
+        GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgb8, NoiseTextureWidth, NoiseTextureHeight);
         
         noiseTextureSampler = GL.GenSampler();
         GL.SamplerParameteri(noiseTextureSampler, SamplerParameterI.TextureMinFilter, (int)TextureMinFilter.Nearest);
@@ -95,7 +95,7 @@ internal class Glitch : IDisposable
         }
         
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, outputTexture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, outputTexture, 0);
         GL.Viewport(0, 0, size.X, size.Y);
         
         GL.UseProgram(program);
@@ -103,11 +103,11 @@ internal class Glitch : IDisposable
         GL.Uniform1f(colorIntensityUniformLocation, intensity);
         
         GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2d, inputTexture);
+        GL.BindTexture(TextureTarget.Texture2D, inputTexture);
         GL.BindSampler(0, sampler);
         
         GL.ActiveTexture(TextureUnit.Texture1);
-        GL.BindTexture(TextureTarget.Texture2d, noiseTexture);
+        GL.BindTexture(TextureTarget.Texture2D, noiseTexture);
         GL.BindSampler(1, noiseTextureSampler);
         
         GL.BindVertexArray(vaoHandle);
@@ -132,8 +132,8 @@ internal class Glitch : IDisposable
         }
 
         GL.PixelStorei(PixelStoreParameter.UnpackAlignment, 1);
-        GL.BindTexture(TextureTarget.Texture2d, noiseTexture);
-        GL.TexSubImage2D(TextureTarget.Texture2d, 0, 0, 0, NoiseTextureWidth, NoiseTextureHeight, PixelFormat.Rgb, PixelType.UnsignedByte, noiseBuffer);
+        GL.BindTexture(TextureTarget.Texture2D, noiseTexture);
+        GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, NoiseTextureWidth, NoiseTextureHeight, PixelFormat.Rgb, PixelType.UnsignedByte, noiseBuffer);
     }
 
     private static float GetRandomFloat(PseudoRng rng)

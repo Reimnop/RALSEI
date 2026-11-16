@@ -32,5 +32,5 @@ public interface IVulkanSurface
     IReadOnlyList<string> GetRequiredInstanceExtensions();
 
     /// <summary>Creates a VkSurfaceKHR for the VkInstance and returns its handle. The caller owns it and destroys it before the instance.</summary>
-    ulong CreateSurface(ulong instance);
+    ulong CreateSurface(IntPtr instance);
 }

@@ -81,13 +81,13 @@ internal class UberPost : IDisposable
         // gradient is done in gamma, so don't convert
         
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, outputTexture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, outputTexture, 0);
         GL.Viewport(0, 0, size.X, size.Y);
         
         GL.UseProgram(program);
         
         GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2d, inputTexture);
+        GL.BindTexture(TextureTarget.Texture2D, inputTexture);
         
         GL.Uniform2i(outputSizeUniformLocation, size.X, size.Y);
         GL.Uniform1f(hueShiftAngleUniformLocation, hueShiftAngle);

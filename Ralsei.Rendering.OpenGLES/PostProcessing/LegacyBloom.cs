@@ -85,7 +85,7 @@ internal class LegacyBloom : IDisposable
         GL.BindSampler(1, textureSampler);
         
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, mip0.Handle, 0); // Bind output texture
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, mip0.Handle, 0); // Bind output texture
         GL.Viewport(0, 0, mip0.Size.X, mip0.Size.Y);
         
         GL.Disable(EnableCap.Blend);
@@ -101,7 +101,7 @@ internal class LegacyBloom : IDisposable
         // We use active texture 0
         GL.ActiveTexture(TextureUnit.Texture0);
         
-        GL.BindTexture(TextureTarget.Texture2d, inputTexture);
+        GL.BindTexture(TextureTarget.Texture2D, inputTexture);
         
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         
@@ -113,10 +113,10 @@ internal class LegacyBloom : IDisposable
             var targetMip = mipChain[i];
             
             // Use up mip as our target to save memory
-            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetMip.Handle, 0);
+            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, targetMip.Handle, 0);
             GL.Viewport(0, 0, targetMip.Size.X, targetMip.Size.Y);
             
-            GL.BindTexture(TextureTarget.Texture2d, sourceMip.Handle);
+            GL.BindTexture(TextureTarget.Texture2D, sourceMip.Handle);
             
             GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         }
@@ -133,17 +133,17 @@ internal class LegacyBloom : IDisposable
             var sourceMip = mipChain[i + 1];
             var targetMip = mipChain[i];
             
-            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetMip.Handle, 0);
+            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, targetMip.Handle, 0);
             GL.Viewport(0, 0, targetMip.Size.X, targetMip.Size.Y);
             
-            GL.BindTexture(TextureTarget.Texture2d, sourceMip.Handle);
+            GL.BindTexture(TextureTarget.Texture2D, sourceMip.Handle);
             
             GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         }
         
         GL.Disable(EnableCap.Blend);
         
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, outputTexture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, outputTexture, 0);
         GL.Viewport(0, 0, size.X, size.Y);
         
         GL.UseProgram(combineProgram);
@@ -155,10 +155,10 @@ internal class LegacyBloom : IDisposable
         GL.Uniform3f(combineTintUniformLocation, tint.R, tint.G, tint.B);
         
         GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2d, inputTexture);
+        GL.BindTexture(TextureTarget.Texture2D, inputTexture);
         
         GL.ActiveTexture(TextureUnit.Texture1);
-        GL.BindTexture(TextureTarget.Texture2d, mip0.Handle);
+        GL.BindTexture(TextureTarget.Texture2D, mip0.Handle);
         
         GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
         
@@ -178,8 +178,8 @@ internal class LegacyBloom : IDisposable
                 Math.Max(size.X >> i, 1),
                 Math.Max(size.Y >> i, 1));
             var mip = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, mip);
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba16f, mipSize.X, mipSize.Y);
+            GL.BindTexture(TextureTarget.Texture2D, mip);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba16f, mipSize.X, mipSize.Y);
             mipChain.Add(new Mip(mip, mipSize));
             
             if (mipSize is { X: 1, Y: 1 })

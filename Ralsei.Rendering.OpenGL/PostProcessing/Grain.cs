@@ -55,13 +55,13 @@ internal class Grain : IDisposable
         GL.UseProgram(noiseAddProgram);
         GL.Uniform1i(noiseAddSourceSamplerUniformLocation, 0);
         
-        noiseTextureA = GL.CreateTexture(TextureTarget.Texture2d);
+        noiseTextureA = GL.CreateTexture(TextureTarget.Texture2D);
         GL.TextureStorage2D(noiseTextureA, 1, SizedInternalFormat.R16f, NoiseTextureWidth, NoiseTextureHeight);
         
-        noiseTextureB = GL.CreateTexture(TextureTarget.Texture2d);
+        noiseTextureB = GL.CreateTexture(TextureTarget.Texture2D);
         GL.TextureStorage2D(noiseTextureB, 1, SizedInternalFormat.R16f, NoiseTextureWidth, NoiseTextureHeight);
         
-        noiseTextureCombined = GL.CreateTexture(TextureTarget.Texture2d);
+        noiseTextureCombined = GL.CreateTexture(TextureTarget.Texture2D);
         GL.TextureStorage2D(noiseTextureCombined, 1, SizedInternalFormat.Rgba16f, NoiseTextureWidth, NoiseTextureHeight);
         
         noiseSampler = GL.CreateSampler();

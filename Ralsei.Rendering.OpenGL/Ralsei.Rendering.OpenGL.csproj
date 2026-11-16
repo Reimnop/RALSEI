@@ -8,7 +8,7 @@
   </PropertyGroup>
   
   <ItemGroup>
-    <PackageReference Include="OpenTK.Graphics" Version="5.0.0-pre.11" />
+    <PackageReference Include="OpenTK.Graphics" Version="5.0.0-pre.16" />
   </ItemGroup>
   
   <ItemGroup>

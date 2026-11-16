@@ -24,17 +24,17 @@ internal sealed unsafe class FrameReadback : IDisposable
             if (targetTexture != 0)
                 GL.DeleteTexture(targetTexture);
 
-            targetTexture = GL.CreateTexture(TextureTarget.Texture2d);
+            targetTexture = GL.CreateTexture(TextureTarget.Texture2D);
             GL.TextureStorage2D(targetTexture, 1, SizedInternalFormat.Rgba8, frameSize.X, frameSize.Y);
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, targetFramebuffer);
-            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetTexture, 0);
+            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, targetTexture, 0);
 
             size = frameSize;
             pixels = new byte[frameSize.X * frameSize.Y * 4];
         }
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, sourceFramebuffer);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, texture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, texture, 0);
 
         GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, sourceFramebuffer);
         GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, targetFramebuffer);

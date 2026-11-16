@@ -164,7 +164,7 @@ internal class LegacyBloom : IDisposable
                 Math.Max(size.X >> i, 1),
                 Math.Max(size.Y >> i, 1));
             
-            var mipHandle = GL.CreateTexture(TextureTarget.Texture2d);
+            var mipHandle = GL.CreateTexture(TextureTarget.Texture2D);
             GL.TextureStorage2D(mipHandle, 1, SizedInternalFormat.Rgba16f, mipSize.X, mipSize.Y);
             mipChain.Add(new Mip(mipHandle, mipSize));
             

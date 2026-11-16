@@ -43,7 +43,7 @@ internal class Glitch : IDisposable
         GL.Uniform1i(textureUniformLocation, TextureBinding);
         GL.Uniform1i(noiseTextureUniformLocation, NoiseTextureBinding);
         
-        noiseTexture = GL.CreateTexture(TextureTarget.Texture2d);
+        noiseTexture = GL.CreateTexture(TextureTarget.Texture2D);
         GL.TextureStorage2D(noiseTexture, 1, SizedInternalFormat.Rgb8, NoiseTextureWidth, NoiseTextureHeight);
         
         noiseTextureSampler = GL.CreateSampler();

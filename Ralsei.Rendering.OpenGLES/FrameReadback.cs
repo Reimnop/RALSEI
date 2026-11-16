@@ -25,17 +25,17 @@ internal sealed unsafe class FrameReadback : IDisposable
                 GL.DeleteTexture(targetTexture);
 
             targetTexture = GL.GenTexture();
-            GL.BindTexture(TextureTarget.Texture2d, targetTexture);
-            GL.TexStorage2D(TextureTarget.Texture2d, 1, SizedInternalFormat.Rgba8, frameSize.X, frameSize.Y);
+            GL.BindTexture(TextureTarget.Texture2D, targetTexture);
+            GL.TexStorage2D(TextureTarget.Texture2D, 1, SizedInternalFormat.Rgba8, frameSize.X, frameSize.Y);
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, targetFramebuffer);
-            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetTexture, 0);
+            GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, targetTexture, 0);
 
             size = frameSize;
             pixels = new byte[frameSize.X * frameSize.Y * 4];
         }
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, sourceFramebuffer);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, texture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, texture, 0);
 
         GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, sourceFramebuffer);
         GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, targetFramebuffer);

@@ -23,7 +23,7 @@ public sealed unsafe class VulkanFFmpegSurface(DesktopSurfaceSettings surfaceSet
 
     public IReadOnlyList<string> GetRequiredInstanceExtensions() => [];
 
-    public ulong CreateSurface(ulong instance)
+    public ulong CreateSurface(IntPtr instance)
         => throw new NotSupportedException("A headless surface has nothing to present to");
 
     public void ReceiveFrame(ReadOnlySpan<byte> rgba, Vector2i size)

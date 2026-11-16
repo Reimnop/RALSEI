@@ -102,9 +102,9 @@ public unsafe class DesktopWindow : IDisposable
             return GLFW.GetRequiredInstanceExtensions();
         }
 
-        public ulong CreateSurface(ulong instance)
+        public ulong CreateSurface(IntPtr instance)
         {
-            var result = GLFW.CreateWindowSurface(new VkHandle { Handle = instance }, window.windowPtr, null, out VkHandle surface);
+            var result = GLFW.CreateWindowSurface(new VkHandle { Handle = (ulong)instance }, window.windowPtr, null, out VkHandle surface);
             if (result != 0)
                 throw new InvalidOperationException($"Failed to create a Vulkan surface for the window (VkResult {result})");
 

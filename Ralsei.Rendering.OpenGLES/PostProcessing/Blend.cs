@@ -29,7 +29,7 @@ internal class Blend : IDisposable
     public void Clear(Vector2i size, int targetTexture)
     {
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetTexture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, targetTexture, 0);
         GL.Viewport(0, 0, size.X, size.Y);
 
         GL.Disable(EnableCap.Blend);
@@ -44,7 +44,7 @@ internal class Blend : IDisposable
     public void Process(Vector2i size, int sourceTexture, int targetTexture, float opacity = 1f, ClipRect region = default)
     {
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
-        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2d, targetTexture, 0);
+        GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, targetTexture, 0);
         GL.Viewport(0, 0, size.X, size.Y);
 
         GL.UseProgram(program);
@@ -52,7 +52,7 @@ internal class Blend : IDisposable
         GL.Uniform1f(opacityUniformLocation, opacity);
 
         GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2d, sourceTexture);
+        GL.BindTexture(TextureTarget.Texture2D, sourceTexture);
 
         // The pass can not read the target, so the blending does what it would
         GL.Disable(EnableCap.DepthTest);
