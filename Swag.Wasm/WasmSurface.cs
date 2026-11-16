@@ -12,7 +12,7 @@ public class WasmSurface : IOpenGLSurface, IDisposable
     private class BindingsContext : IBindingsContext
     {
         public IntPtr GetProcAddress(string procName)
-            => Egl.GetProcAddress(procName);
+            => PInvokeEgl.GetProcAddress(procName);
     }
     
     public int Framebuffer => 0;
@@ -25,15 +25,15 @@ public class WasmSurface : IOpenGLSurface, IDisposable
         {
             int width = 0, height = 0;
 
-            if (!Egl.QuerySurface(display, surface, SurfaceQueryAttribute.Width, ref width) ||
-                !Egl.QuerySurface(display, surface, SurfaceQueryAttribute.Height, ref height))
+            if (!PInvokeEgl.QuerySurface(display, surface, SurfaceQueryAttribute.Width, ref width) ||
+                !PInvokeEgl.QuerySurface(display, surface, SurfaceQueryAttribute.Height, ref height))
                 throw new InvalidOperationException("The size of the EGL surface can not be queried any more");
 
             return new Vector2i(width, height);
         }
     }
 
-    public bool IsContextLost => Egl.GetCurrentContext() != context;
+    public bool IsContextLost => PInvokeEgl.GetCurrentContext() != context;
 
     private readonly EGLDisplay display;
     private readonly EGLContext context;
@@ -44,11 +44,11 @@ public class WasmSurface : IOpenGLSurface, IDisposable
         if (!glSettings.IsES)
             throw new InvalidOperationException("Only OpenGL ES is supported on WebAssembly");
         
-        display = Egl.GetDisplay((IntPtr) All.DefaultDisplay);
+        display = PInvokeEgl.GetDisplay((IntPtr) All.DefaultDisplay);
         if (display.Value == IntPtr.Zero)
             throw new InvalidOperationException("Failed to get EGL display");
         
-        if (!Egl.Initialize(display, out _, out _))
+        if (!PInvokeEgl.Initialize(display, out _, out _))
             throw new InvalidOperationException("Failed to initialize EGL");
         
         int[] configAttribs =
@@ -66,7 +66,7 @@ public class WasmSurface : IOpenGLSurface, IDisposable
 
         var configs = new EGLConfig[1];
         var configCounts = new int[1];
-        if (!Egl.ChooseConfig(display, configAttribs, configs, 1, configCounts) ||
+        if (!PInvokeEgl.ChooseConfig(display, configAttribs, configs, 1, configCounts) ||
             configCounts[0] < 1 ||
             configs[0].Value == IntPtr.Zero)
             throw new InvalidOperationException("Failed to choose EGL config");
@@ -79,18 +79,18 @@ public class WasmSurface : IOpenGLSurface, IDisposable
             (int) ContextAttribute.None
         };
 
-        context = Egl.CreateContext(display, config, EGLContext.NoContext, contextAttribs);
+        context = PInvokeEgl.CreateContext(display, config, EGLContext.NoContext, contextAttribs);
         if (context.Value == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create EGL context");
 
         unsafe
         {
-            surface = Egl.CreateWindowSurface(display, config, IntPtr.Zero, (int*)0);
+            surface = PInvokeEgl.CreateWindowSurface(display, config, IntPtr.Zero, (int*)0);
         }
         if (surface.Value == IntPtr.Zero)
             throw new InvalidOperationException("Failed to create EGL surface");
 
-        if (!Egl.MakeCurrent(display, surface, surface, context))
+        if (!PInvokeEgl.MakeCurrent(display, surface, surface, context))
             throw new InvalidOperationException("Failed to make context current");
 
         GLLoader.LoadBindings(new BindingsContext());
@@ -98,7 +98,7 @@ public class WasmSurface : IOpenGLSurface, IDisposable
 
     public void SwapBuffers()
     {
-        if (!Egl.SwapBuffers(display, surface))
+        if (!PInvokeEgl.SwapBuffers(display, surface))
             throw new InvalidOperationException("Failed to swap the buffers of the EGL surface");
     }
 
@@ -106,18 +106,18 @@ public class WasmSurface : IOpenGLSurface, IDisposable
     {
         if (display.Value != IntPtr.Zero)
         {
-            Egl.MakeCurrent(display, EGLSurface.NoSurface, EGLSurface.NoSurface, EGLContext.NoContext);
+            PInvokeEgl.MakeCurrent(display, EGLSurface.NoSurface, EGLSurface.NoSurface, EGLContext.NoContext);
 
             if (surface.Value != IntPtr.Zero)
             {
-                Egl.DestroySurface(display, surface);
+                PInvokeEgl.DestroySurface(display, surface);
                 surface = EGLSurface.NoSurface;
             }
 
             if (context.Value != IntPtr.Zero)
-                Egl.DestroyContext(display, context);
+                PInvokeEgl.DestroyContext(display, context);
 
-            Egl.Terminate(display);
+            PInvokeEgl.Terminate(display);
         }
     }
 }
